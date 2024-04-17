@@ -808,6 +808,7 @@ dependencies = [
  "color-eyre",
  "crossterm",
  "futures",
+ "itertools 0.12.1",
  "lazy_static",
  "log",
  "meshtastic",

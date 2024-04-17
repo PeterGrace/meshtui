@@ -1,81 +1,74 @@
 use crate::tui;
 use crate::tui::Event;
 use anyhow::Result;
-use std::collections::HashMap;
+use itertools::Itertools;
 use crate::consts;
+use color_eyre::eyre::WrapErr;
+use crate::theme;
 use time::{
     OffsetDateTime,
     format_description::well_known::Rfc3339
 };
 
 use crossterm::event::KeyCode;
+use crossterm::event::KeyCode::{Esc, Left, Right};
 use ratatui::{
     layout::Constraint::*,
     prelude::*,
     widgets::{Block, Borders, Paragraph, Tabs},
 };
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+use crate::tabs::*;
+use crate::theme::THEME;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-pub enum AppState {
-    #[default]
-    Running,
-    Exiting,
-}
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-pub enum CurrentScreen {
-    #[default]
-    Main,
-    Editing,
-    Exiting,
-}
 
-pub enum CurrentlyEditing {
-    Key,
-    Value,
-}
-
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct App {
-    pub should_quit: bool,
-    pub tab: MenuTabs
+    pub mode: Mode,
+    pub tab: MenuTabs,
+    pub nodes_tab: NodesTab,
+    pub config_tab: ConfigTab,
+    pub messages_tab: MessagesTab
 }
 
 impl App {
     pub async fn run(&mut self) -> Result<()> {
         let mut tui = tui::Tui::new()
             .unwrap()
-            .tick_rate(4.0) // 4 ticks per second
-            .frame_rate(4.0); // 30 frames per second
+            .tick_rate(consts::TICK_RATE)
+            .frame_rate(consts::FRAME_RATE);
 
         tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
 
-        loop {
-            tui.draw(|f| {
-                // Deref allows calling `tui.terminal.draw`
-                self.ui(f);
-            })?;
+        while self.is_running() {
+            self.draw(&mut tui.terminal);
 
             if let Some(evt) = tui.next().await {
                 if let Event::Key(press) = evt {
                     use KeyCode::*;
                     match press.code {
-                        Char('q') | Esc => break,
+                        Char('q') | Esc => { self.mode = Mode::Exiting; },
                         Char('h') | Left => self.prev_tab(),
                         Char('l') | Right => self.next_tab(),
                         _ => {}
                     };
                 }
             };
-
-            if self.should_quit {
-                break;
-            }
         }
-
         tui.exit(); // stops event handler, exits raw mode, exits alternate screen
 
         Ok(())
+    }
+    fn draw(&self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
+        terminal
+            .draw(|frame| {
+                frame.render_widget(self, frame.size());
+            })
+            .wrap_err("terminal.draw").unwrap();
+        Ok(())
+    }
+    fn is_running(&self) -> bool {
+        self.mode != Mode::Exiting
     }
     fn handle_event(&mut self, event: Event) -> bool {
         true
@@ -91,60 +84,74 @@ impl App {
         self.tab = self.tab.next();
     }
 
-    fn ui(&mut self, frame: &mut Frame) {
+    fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
+        let keys = [
+            ("H/←", "Left"),
+            ("L/→", "Right"),
+            ("K/↑", "Up"),
+            ("J/↓", "Down"),
+            ("Q/Esc", "Quit"),
+        ];
+        let dt: OffsetDateTime = OffsetDateTime::now_utc();
+
+        let mut spans = keys
+            .iter()
+            .flat_map(|(key, desc)| {
+                let key = Span::styled(format!(" {key} "), THEME.key_binding.key);
+                let desc = Span::styled(format!(" {desc} "), THEME.key_binding.description);
+                [key, desc]
+            })
+            .collect_vec();
+        spans.push(
+            Span::styled(
+                format!("| {}", dt.format(consts::DATE_FORMAT).unwrap()),
+                THEME.date_display
+            )
+        );
+        Line::from(spans)
+            .centered()
+            .style((Color::Indexed(236), Color::Indexed(232)))
+            .render(area, buf);
+    }
+    pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
+        let titles = MenuTabs::iter().map(MenuTabs::title);
+        let top_menu = Tabs::new(titles)
+            .style(THEME.tabs)
+            .highlight_style(THEME.tabs_selected)
+            .divider("")
+            .padding("", "")
+            .select(self.tab as usize).render(area, buf);
+    }
+    pub fn render_selected_tab(&self, area: Rect, buf: &mut Buffer) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.render(area, buf),
+            MenuTabs::Messages => self.messages_tab.render(area, buf),
+            MenuTabs::Config => self.config_tab.render(area, buf),
+            _ => {}
+        }
+    }
+}
+
+impl Widget for &App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Length(1),
                 Constraint::Min(0),
                 Constraint::Length(1)
-            ])
-            .split(frame.size());
+            ]);
+        let [tabs, middle, bottom_bar] = layout.areas(area);
+        Block::new().style(THEME.root).render(area, buf);
+        self.render_tabs(tabs, buf);
+        self.render_selected_tab(middle, buf);
+        App::render_bottom_bar(bottom_bar, buf);
 
-        // tabs
-        let titles = MenuTabs::iter().map(MenuTabs::title);
-        let top_menu = Tabs::new(titles)
-                .style(Style::default().fg(consts::MENU_COLOR_FOREGROUND).bg(consts::MENU_COLOR_BACKGROUND))
-                .highlight_style(Style::default().fg(consts::MENU_COLOR_FOREGROUND).bg(consts::MENU_COLOR_HIGHLIGHT))
-                .divider("")
-                .padding("","")
-                .select(self.tab as usize)
-            ;
-
-        let current_tab: String = format!("{:?}", self.tab);
-        let middle = Paragraph::new("MiddleGround")
-            .block(
-                Block::new()
-                .borders(Borders::ALL)
-                .title(current_tab)
-                .title_alignment(Alignment::Center)
-                .border_set(symbols::border::DOUBLE)
-                .border_style(Style::default().fg(consts::BORDER_MID_COLOR_FG).bg(consts::BORDER_MID_COLOR_BG))
-                .style(Style::default().fg(Color::Yellow).bg(Color::Blue))
-                );
-
-        let dt: OffsetDateTime = OffsetDateTime::now_utc();
-
-        let bottom_menu = Paragraph::new(dt.format(consts::DATE_FORMAT).unwrap())
-            .block(
-                Block::new()
-                .style(Style::default().fg(consts::MENU_COLOR_FOREGROUND).bg(consts::MENU_COLOR_BACKGROUND))
-                );
-
-        frame.render_widget(top_menu,layout[0]);
-        frame.render_widget(middle,layout[1]);
-        frame.render_widget(bottom_menu,layout[2]);
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
-pub enum MenuTabs {
-    #[default]
-    Messages,
-    Nodes,
-    Config,
-    About
-}
+
+
 
 impl MenuTabs {
     fn next(self) -> Self {
@@ -165,3 +172,23 @@ impl MenuTabs {
         }
     }
 }
+//region "enums"
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    #[default]
+    Running,
+    Exiting,
+}
+pub enum CurrentlyEditing {
+    Key,
+    Value,
+}
+#[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
+pub enum MenuTabs {
+    #[default]
+    Messages,
+    Nodes,
+    Config,
+    About
+}
+//endregion

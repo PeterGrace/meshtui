@@ -4,6 +4,8 @@ extern crate tokio;
 pub mod app;
 pub mod tui;
 pub mod consts;
+mod tabs;
+mod theme;
 
 use tokio::io;
 use app::App;
