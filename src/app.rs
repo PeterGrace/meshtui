@@ -1,3 +1,4 @@
+use crate::ipc::IPCMessage;
 use crate::tui;
 use crate::tui::Event;
 use anyhow::Result;
@@ -24,6 +25,13 @@ use crate::tabs::*;
 use crate::theme::THEME;
 use crate::tui::Event::Render;
 use tokio::task;
+use tokio::sync::{
+    broadcast,
+    mpsc,
+    RwLock
+};
+use tokio::task::JoinSet;
+use crate::meshtastic_interaction::meshtastic_loop;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct App {
@@ -53,7 +61,15 @@ impl App {
 
         tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
 
-        task::spawn( async move {background_task().await});
+        let mut join_set = JoinSet::new();
+
+        let (to_mesh_thread_tx, to_mesh_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (from_mesh_thread_tx, from_mesh_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+
+        let to_tx = to_mesh_thread_tx.clone();
+        join_set.spawn(async move {meshtastic_loop(to_tx).await});
+
+        join_set.spawn( async move {background_task().await});
 
         while self.is_running() {
             self.draw(&mut tui.terminal);
@@ -100,7 +116,7 @@ impl App {
             };
         }
         tui.exit(); // stops event handler, exits raw mode, exits alternate screen
-
+        join_set.abort_all();
         Ok(())
     }
     fn draw(&self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
@@ -320,13 +336,11 @@ enum InputMode {
 }
 //endregion
 
-async fn background_task() {
+async fn background_task() -> Result<()> {
     loop {
-        error!(target:"background-task", "an error");
-        warn!(target:"background-task", "a warning");
         info!(target:"background-task", "an info");
         debug!(target:"background-task", "a debug");
         trace!(target:"background-task", "a trace");
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
     }
 }

@@ -6,6 +6,8 @@ pub mod tui;
 pub mod consts;
 mod tabs;
 mod theme;
+mod meshtastic_interaction;
+mod ipc;
 
 use tokio::io;
 use app::App;

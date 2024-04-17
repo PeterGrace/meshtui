@@ -6,3 +6,5 @@ pub const DATE_FORMAT: &[BorrowedFormatItem<'_>] = format_description!("[year]-[
 
 pub const TICK_RATE: f64 = 10.0_f64;
 pub const FRAME_RATE: f64 = 2.0_f64;
+
+pub const MPSC_BUFFER_SIZE: usize = 100_usize;
