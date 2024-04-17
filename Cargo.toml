@@ -1,0 +1,25 @@
+[package]
+name = "meshtui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.82"
+color-eyre = "0.6.3"
+crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
+futures = "0.3.30"
+lazy_static = "1.4.0"
+log = "0.4.21"
+meshtastic = "0.1.6"
+ratatui = { version = "0.26.2", features = ["macros", "serde", "all-widgets"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_derive = "1.0.198"
+serde_json = "1.0.116"
+signal-hook = "0.3.17"
+strum = { version = "0.26.2", features = ["derive", "strum_macros"] }
+time = { version = "0.3.36", features = ["formatting", "macros"] }
+time-macros = { version = "0.2.18", features = ["formatting"]  }
+tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros", "time"] }
+tokio-util = "0.7.10"
