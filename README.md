@@ -3,4 +3,4 @@ I'm beginning work on a Meshtastic tui tool.  It's at least a usable TUI interfa
 
 Here's an early screenshot, tui style roughly based on Turbo Vision (since I'm old)
 
-![meshtui early screenshot](screenshot.png)
+![meshtui early screenshot](meshtui-screenshot.png)
