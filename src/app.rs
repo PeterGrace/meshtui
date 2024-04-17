@@ -11,24 +11,29 @@ use time::{
 };
 
 use crossterm::event::KeyCode;
-use crossterm::event::KeyCode::{Esc, Left, Right};
+use crossterm::event::KeyCode::{Down, Esc, Left, Right, Up};
 use ratatui::{
     layout::Constraint::*,
     prelude::*,
     widgets::{Block, Borders, Paragraph, Tabs},
 };
+use ratatui::widgets::{Row, Table};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use crate::tabs::*;
 use crate::theme::THEME;
+use crate::tui::Event::Render;
 
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct App {
     pub mode: Mode,
     pub tab: MenuTabs,
     pub nodes_tab: NodesTab,
     pub config_tab: ConfigTab,
-    pub messages_tab: MessagesTab
+    pub messages_tab: MessagesTab,
+    pub input_mode: InputMode,
+    pub cursor_position: usize,
+    pub input: String,
 }
 
 impl App {
@@ -46,12 +51,41 @@ impl App {
             if let Some(evt) = tui.next().await {
                 if let Event::Key(press) = evt {
                     use KeyCode::*;
-                    match press.code {
-                        Char('q') | Esc => { self.mode = Mode::Exiting; },
-                        Char('h') | Left => self.prev_tab(),
-                        Char('l') | Right => self.next_tab(),
-                        _ => {}
-                    };
+
+                    match self.input_mode {
+                        InputMode::Normal => {
+                            match press.code {
+                                Char('q') | Esc => { self.mode = Mode::Exiting; },
+                                Char('h') | Left => self.prev_tab(),
+                                Char('l') | Right => self.next_tab(),
+                                Char('k') | Up => self.prev(),
+                                Char('j') | Down => self.next(),
+                                _ => {}
+                            }
+                        },
+                        InputMode::Editing => {
+                            match press.code {
+                                KeyCode::Enter => {},
+                                KeyCode::Char(to_insert) => self.enter_char(to_insert),
+                                KeyCode::Backspace => {
+                                    self.delete_char();
+                                }
+                                KeyCode::Left => {
+                                    self.move_cursor_left();
+                                }
+                                KeyCode::Right => {
+                                    self.move_cursor_right();
+                                }
+                                KeyCode::Esc => {
+                                    self.input_mode = InputMode::Normal;
+                                }
+                                _ => {}
+                            }
+
+                        },
+
+
+                    }
                 }
             };
         }
@@ -83,7 +117,84 @@ impl App {
     fn next_tab(&mut self) {
         self.tab = self.tab.next();
     }
+    fn prev(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.prev_row(),
+            MenuTabs::Messages => self.messages_tab.prev_row(),
+            MenuTabs::Config => self.config_tab.prev_row(),
+            _ => {}
+        }
+    }
 
+    fn next(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.next_row(),
+            MenuTabs::Messages => self.messages_tab.next_row(),
+            MenuTabs::Config => self.config_tab.next_row(),
+            _ => {}
+        }
+    }
+    fn move_cursor_left(&mut self) {
+        let cursor_moved_left = self.cursor_position.saturating_sub(1);
+        self.cursor_position = self.clamp_cursor(cursor_moved_left);
+    }
+
+    fn move_cursor_right(&mut self) {
+        let cursor_moved_right = self.cursor_position.saturating_add(1);
+        self.cursor_position = self.clamp_cursor(cursor_moved_right);
+    }
+
+    fn enter_char(&mut self, new_char: char) {
+        self.input.insert(self.cursor_position, new_char);
+
+        self.move_cursor_right();
+    }
+
+    fn delete_char(&mut self) {
+        let is_not_cursor_leftmost = self.cursor_position != 0;
+        if is_not_cursor_leftmost {
+            // Method "remove" is not used on the saved text for deleting the selected char.
+            // Reason: Using remove on String works on bytes instead of the chars.
+            // Using remove would require special care because of char boundaries.
+
+            let current_index = self.cursor_position;
+            let from_left_to_current_index = current_index - 1;
+
+            // Getting all characters before the selected character.
+            let before_char_to_delete = self.input.chars().take(from_left_to_current_index);
+            // Getting all characters after selected character.
+            let after_char_to_delete = self.input.chars().skip(current_index);
+
+            // Put all characters together except the selected one.
+            // By leaving the selected one out, it is forgotten and therefore deleted.
+            self.input = before_char_to_delete.chain(after_char_to_delete).collect();
+            self.move_cursor_left();
+        }
+    }
+
+    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
+        new_cursor_pos.clamp(0, self.input.len())
+    }
+
+    fn reset_cursor(&mut self) {
+        self.cursor_position = 0;
+    }
+    fn render_event_log(area: Rect, buf: &mut Buffer) {
+        let block =
+            Block::new()
+                .borders(Borders::ALL)
+                .title("Event Log")
+                .title_alignment(Alignment::Center)
+                .border_set(symbols::border::DOUBLE)
+                .style(THEME.middle);
+        let row_text = vec!["started app"];
+        let rows: Vec<Row> = row_text.iter().map(|r| Row::new(vec!["1900-01-01 00:00:00", *r])).collect();
+        Widget::render(
+            Table::new(rows,[Constraint::Length(16), Constraint::Min(0)])
+                .style(THEME.middle)
+                .block(block)
+            ,area, buf);
+    }
     fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
         let keys = [
             ("H/←", "Left"),
@@ -125,7 +236,7 @@ impl App {
     pub fn render_selected_tab(&self, area: Rect, buf: &mut Buffer) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.render(area, buf),
-            MenuTabs::Messages => self.messages_tab.render(area, buf),
+            MenuTabs::Messages => <MessagesTab as Clone>::clone(&self.messages_tab).render(area, buf),
             MenuTabs::Config => self.config_tab.render(area, buf),
             _ => {}
         }
@@ -139,12 +250,14 @@ impl Widget for &App {
             .constraints(vec![
                 Constraint::Length(1),
                 Constraint::Min(0),
+                Constraint::Length(12),
                 Constraint::Length(1)
             ]);
-        let [tabs, middle, bottom_bar] = layout.areas(area);
+        let [tabs, middle, event_log, bottom_bar] = layout.areas(area);
         Block::new().style(THEME.root).render(area, buf);
         self.render_tabs(tabs, buf);
         self.render_selected_tab(middle, buf);
+        App::render_event_log(event_log, buf);
         App::render_bottom_bar(bottom_bar, buf);
 
     }
@@ -190,5 +303,11 @@ pub enum MenuTabs {
     Nodes,
     Config,
     About
+}
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum InputMode {
+    #[default]
+    Normal,
+    Editing,
 }
 //endregion

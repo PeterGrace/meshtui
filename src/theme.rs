@@ -11,6 +11,8 @@ pub struct Theme {
     pub footer: Style,
     pub nodes: NodesTheme,
     pub date_display: Style,
+    pub message_header: Style,
+    pub message_selected: Style,
 }
 pub struct NodesTheme {
     pub list: Style
@@ -34,6 +36,8 @@ pub const THEME: Theme = Theme {
         description: Style::new().fg(MENU_COLOR_FOREGROUND).bg(MENU_COLOR_BACKGROUND),
     },
     date_display: Style::new().fg(MENU_COLOR_FOREGROUND).bg(MENU_COLOR_BACKGROUND),
+    message_header: Style::new().fg(Color::LightCyan),
+    message_selected: Style::new().fg(MENU_COLOR_FOREGROUND).bg(MENU_COLOR_BACKGROUND),
 };
 
 //  https://docs.rs/ratatui/latest/ratatui/style/enum.Color.html#
