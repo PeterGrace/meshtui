@@ -24,3 +24,7 @@ time-macros = { version = "0.2.18", features = ["formatting"]  }
 tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros", "time"] }
 tokio-util = "0.7.10"
 itertools = "0.12.1"
+tracing = {version = "0.1.40"}
+tracing-subscriber = {version = "0.3.17", features = ["fmt","env-filter"]}
+tracing-log = "0.2.0"
+tui-logger = { version = "0.11.0", features = ["tracing-support"]}

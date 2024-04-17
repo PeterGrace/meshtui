@@ -19,10 +19,11 @@ use ratatui::{
 };
 use ratatui::widgets::{Row, Table};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+use tui_logger::TuiLoggerWidget;
 use crate::tabs::*;
 use crate::theme::THEME;
 use crate::tui::Event::Render;
-
+use tokio::task;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct App {
@@ -34,6 +35,13 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
+    pub event_log: Vec<EventLogItem>
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct EventLogItem {
+    pub timestamp: String,
+    pub log_message: String
 }
 
 impl App {
@@ -44,6 +52,8 @@ impl App {
             .frame_rate(consts::FRAME_RATE);
 
         tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
+
+        task::spawn( async move {background_task().await});
 
         while self.is_running() {
             self.draw(&mut tui.terminal);
@@ -179,7 +189,7 @@ impl App {
     fn reset_cursor(&mut self) {
         self.cursor_position = 0;
     }
-    fn render_event_log(area: Rect, buf: &mut Buffer) {
+    fn render_event_log(&self, area: Rect, buf: &mut Buffer) {
         let block =
             Block::new()
                 .borders(Borders::ALL)
@@ -187,13 +197,11 @@ impl App {
                 .title_alignment(Alignment::Center)
                 .border_set(symbols::border::DOUBLE)
                 .style(THEME.middle);
-        let row_text = vec!["started app"];
-        let rows: Vec<Row> = row_text.iter().map(|r| Row::new(vec!["1900-01-01 00:00:00", *r])).collect();
-        Widget::render(
-            Table::new(rows,[Constraint::Length(16), Constraint::Min(0)])
-                .style(THEME.middle)
-                .block(block)
-            ,area, buf);
+
+        TuiLoggerWidget::default()
+            .block(block)
+            .render(area, buf)
+
     }
     fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
         let keys = [
@@ -257,7 +265,7 @@ impl Widget for &App {
         Block::new().style(THEME.root).render(area, buf);
         self.render_tabs(tabs, buf);
         self.render_selected_tab(middle, buf);
-        App::render_event_log(event_log, buf);
+        self.render_event_log(event_log, buf);
         App::render_bottom_bar(bottom_bar, buf);
 
     }
@@ -311,3 +319,14 @@ enum InputMode {
     Editing,
 }
 //endregion
+
+async fn background_task() {
+    loop {
+        error!(target:"background-task", "an error");
+        warn!(target:"background-task", "a warning");
+        info!(target:"background-task", "an info");
+        debug!(target:"background-task", "a debug");
+        trace!(target:"background-task", "a trace");
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    }
+}
