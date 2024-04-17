@@ -13,6 +13,9 @@ use time::{
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyCode::{Down, Esc, Left, Right, Up};
+use meshtastic::Message;
+use meshtastic::protobufs::*;
+use meshtastic::protobufs::telemetry::Variant;
 use ratatui::{
     layout::Constraint::*,
     prelude::*,
@@ -32,8 +35,7 @@ use tokio::sync::{
 };
 use tokio::task::JoinSet;
 use crate::meshtastic_interaction::meshtastic_loop;
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct App {
     pub mode: Mode,
     pub tab: MenuTabs,
@@ -63,21 +65,17 @@ impl App {
 
         let mut join_set = JoinSet::new();
 
-        let (to_mesh_thread_tx, to_mesh_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-        let (from_mesh_thread_tx, from_mesh_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (fromradio_thread_tx, mut fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
-        let to_tx = to_mesh_thread_tx.clone();
+        let to_tx = fromradio_thread_tx.clone();
         join_set.spawn(async move {meshtastic_loop(to_tx).await});
-
-        join_set.spawn( async move {background_task().await});
 
         while self.is_running() {
             self.draw(&mut tui.terminal);
-
             if let Some(evt) = tui.next().await {
                 if let Event::Key(press) = evt {
                     use KeyCode::*;
-
                     match self.input_mode {
                         InputMode::Normal => {
                             match press.code {
@@ -114,6 +112,83 @@ impl App {
                     }
                 }
             };
+
+            if let Ok(packet) = fromradio_thread_rx.try_recv() {
+                if let IPCMessage::FromRadio(fr) = packet {
+                    if let Some(some_fr) = fr.payload_variant {
+                        match some_fr {
+                            from_radio::PayloadVariant::Packet(pa) => {
+                                if let Some(payload) = pa.payload_variant {
+                                    match payload {
+                                        mesh_packet::PayloadVariant::Decoded(de) => {
+                                            match de.portnum() {
+                                                PortNum::TextMessageApp => {}
+                                                PortNum::PositionApp => {
+                                                    let data = Position::decode(de.payload.as_slice()).unwrap();
+                                                    let mut ni = match self.nodes_tab.node_list.contains_key(&de.source) {
+                                                        true => self.nodes_tab.node_list.get(&de.source).unwrap().to_owned(),
+                                                        false => NodeInfo::default()
+                                                    };
+                                                    ni.position = Some(data);
+                                                    self.nodes_tab.node_list.insert(de.source, ni);
+                                                }
+                                                PortNum::NodeinfoApp => {}
+                                                PortNum::RoutingApp => {}
+                                                PortNum::AdminApp => {}
+                                                PortNum::WaypointApp => {}
+                                                PortNum::ReplyApp => {}
+                                                PortNum::PaxcounterApp => {}
+                                                PortNum::StoreForwardApp => {}
+                                                PortNum::RangeTestApp => {}
+                                                PortNum::TelemetryApp => {
+                                                    let data = meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()).unwrap();
+                                                    if let Some(v) = data.variant {
+                                                        match v {
+                                                            Variant::DeviceMetrics(dm) => {
+                                                                let mut ni = match self.nodes_tab.node_list.contains_key(&de.source) {
+                                                                    true => self.nodes_tab.node_list.get(&de.source).unwrap().to_owned(),
+                                                                    false => NodeInfo::default()
+                                                                };
+                                                                ni.device_metrics = Some(dm);
+                                                                self.nodes_tab.node_list.insert(de.source, ni);
+                                                            }
+                                                            Variant::EnvironmentMetrics(_) => {}
+                                                            Variant::AirQualityMetrics(_) => {}
+                                                            Variant::PowerMetrics(_) => {}
+                                                        }
+                                                    }
+                                                }
+                                                PortNum::TracerouteApp => {}
+                                                PortNum::NeighborinfoApp => {}
+                                                _ => {}
+                                            }
+                                        }
+                                        mesh_packet::PayloadVariant::Encrypted(_) => {}
+                                    }
+                                }
+
+
+                            }
+                            from_radio::PayloadVariant::MyInfo(mi) => {
+                                info!("My node number is {:#?}", mi.my_node_num);
+                            },
+                            from_radio::PayloadVariant::NodeInfo(ni) => {
+                                self.nodes_tab.node_list.insert(ni.num, ni);
+                            }
+                            from_radio::PayloadVariant::Config(_) => {}
+                            from_radio::PayloadVariant::LogRecord(_) => {}
+                            from_radio::PayloadVariant::ConfigCompleteId(_) => {}
+                            from_radio::PayloadVariant::Rebooted(_) => {}
+                            from_radio::PayloadVariant::ModuleConfig(_) => {}
+                            from_radio::PayloadVariant::Channel(_) => {}
+                            from_radio::PayloadVariant::QueueStatus(_) => {}
+                            from_radio::PayloadVariant::XmodemPacket(_) => {}
+                            from_radio::PayloadVariant::Metadata(_) => {}
+                            from_radio::PayloadVariant::MqttClientProxyMessage(_) => {}
+                        }
+                    }
+                }
+            }
         }
         tui.exit(); // stops event handler, exits raw mode, exits alternate screen
         join_set.abort_all();
@@ -259,9 +334,9 @@ impl App {
     }
     pub fn render_selected_tab(&self, area: Rect, buf: &mut Buffer) {
         match self.tab {
-            MenuTabs::Nodes => self.nodes_tab.render(area, buf),
-            MenuTabs::Messages => <MessagesTab as Clone>::clone(&self.messages_tab).render(area, buf),
-            MenuTabs::Config => self.config_tab.render(area, buf),
+            MenuTabs::Nodes => self.nodes_tab.clone().render(area, buf),
+            MenuTabs::Messages => self.messages_tab.clone().render(area, buf),
+            MenuTabs::Config => self.config_tab.clone().render(area, buf),
             _ => {}
         }
     }
@@ -336,11 +411,3 @@ enum InputMode {
 }
 //endregion
 
-async fn background_task() -> Result<()> {
-    loop {
-        info!(target:"background-task", "an info");
-        debug!(target:"background-task", "a debug");
-        trace!(target:"background-task", "a trace");
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-    }
-}

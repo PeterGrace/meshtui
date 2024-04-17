@@ -1,4 +1,4 @@
-mod nodes;
+pub(crate) mod nodes;
 mod config;
 mod messages;
 

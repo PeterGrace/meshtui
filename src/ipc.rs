@@ -1,5 +1,8 @@
+use meshtastic::protobufs::{FromRadio, ToRadio};
+
+#[derive(Debug)]
 pub enum IPCMessage {
-    FromRadio,
-    ToRadio,
+    FromRadio(FromRadio),
+    ToRadio(ToRadio),
     ExitingThread
 }
