@@ -16,7 +16,9 @@ pub struct MessageEnvelope {
     pub(crate) timestamp: u32,
     pub(crate) source: NodeInfo,
     pub(crate) destination: Option<NodeInfo>,
-    pub(crate) message: String
+    pub(crate) message: String,
+    pub(crate) rx_rssi: i32,
+    pub(crate) rx_snr: f32
 
 }
 
@@ -38,6 +40,8 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         info!("Updating Position for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                         cn.node_info.position = Some(data);
                                         cn.last_seen = util::get_secs();
+                                        cn.last_rssi = pa.rx_rssi;
+                                        cn.last_snr = pa.rx_snr;
                                         return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                     }
                                     PortNum::TelemetryApp => {
@@ -55,6 +59,8 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                                     info!("Updating DeviceMetrics for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                                     cn.node_info.device_metrics = Some(dm);
                                                     cn.last_seen = util::get_secs();
+                                                    cn.last_rssi = pa.rx_rssi;
+                                                    cn.last_snr = pa.rx_snr;
                                                     return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                                 }
                                                 _ => { return None; }
@@ -93,6 +99,8 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         };
                                         cn.neighbors = data.neighbors;
                                         cn.last_seen = util::get_secs();
+                                        cn.last_rssi = pa.rx_rssi;
+                                        cn.last_snr = pa.rx_snr;
                                         return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                     }
                                     PortNum::NodeinfoApp => {
@@ -150,7 +158,9 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                                 timestamp: pa.rx_time,
                                                 source: source_ni,
                                                 destination: dest_ni,
-                                                message: message
+                                                message: message,
+                                                rx_rssi: pa.rx_rssi,
+                                                rx_snr: pa.rx_snr
                                             }));
                                         } else {
                                             warn!("Unable to decode text message to utf8 from ({})", de.source);
@@ -187,6 +197,10 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                     let mut cn = ComprehensiveNode::default();
                     cn.node_info = ni.clone();
                     cn.last_seen = util::get_secs();
+                    cn.last_rssi = 0;
+                    cn.last_snr = ni.snr;
+
+
                     return Some(PacketResponse::NodeUpdate(ni.num, cn));
                 }
                 _ => {

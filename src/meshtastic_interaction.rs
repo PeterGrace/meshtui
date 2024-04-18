@@ -7,13 +7,15 @@ use anyhow::{
     Result,
     bail
 };
+use color_eyre::eyre::private::kind::TraitKind;
+use color_eyre::owo_colors::OwoColorize;
 use meshtastic::api::ConnectedStreamApi;
 use meshtastic::api::state::Connected;
 use meshtastic::packet::PacketReceiver;
 use crate::app::Connection;
 
 
-pub(crate) async fn meshtastic_loop(connection: Connection, tx: tokio::sync::mpsc::Sender<IPCMessage>) -> Result<()> {
+pub(crate) async fn meshtastic_loop(connection: Connection, tx: tokio::sync::mpsc::Sender<IPCMessage>, mut rx: tokio::sync::mpsc::Receiver<IPCMessage>) -> Result<()> {
 
     let stream_api = StreamApi::new();
     let mut decoded_listener;
@@ -23,7 +25,6 @@ pub(crate) async fn meshtastic_loop(connection: Connection, tx: tokio::sync::mps
             let tcp_stream = match utils::stream::build_tcp_stream("10.174.2.41:4403".to_string()).await {
                 Ok(sh) => sh,
                 Err(e) => {
-                    error!("Unable to connect to meshtastic host: {e}");
                     bail!(e);
                 }
             };
@@ -37,22 +38,27 @@ pub(crate) async fn meshtastic_loop(connection: Connection, tx: tokio::sync::mps
             panic!("Neither tcp nor serial selected for connection.");
         }
     }
-
-
-
-
     let config_id = utils::generate_rand_id();
     let _stream_api = connected_stream_api.configure(config_id).await?;
-    //stream_api.update_user()
     info!("Connected to meshtastic node!");
 
     loop {
-
         match decoded_listener.try_recv() {
             Ok(fr) => {
                 if let Err(e) = tx.send(IPCMessage::FromRadio(fr)).await {
                     error!("Couldn't send FromRadio packet to mpsc: {e}");
                 }
+            },
+            Err(_) => {}
+        }
+        match rx.try_recv() {
+            Ok(inbound) => {
+                if let IPCMessage::ToRadio(tr) = inbound {
+                    //_stream_api.send_text();
+                } else {
+                    warn!("Unknown ipc message sent into comms thread.");
+                }
+
             },
             Err(_) => {}
         }

@@ -8,4 +8,6 @@ pub struct CliArgs {
     pub serial_port: Option<String>,
     #[arg(short, long, help="The tcp port for stream api (defaults to 4403)", default_value_t = 4403)]
     pub tcp_port: u16,
+    #[arg(short='m', long, help="Show MQTT nodes in output?", action)]
+    pub show_mqtt: bool
 }

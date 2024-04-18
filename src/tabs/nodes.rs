@@ -9,21 +9,26 @@ use crate::theme::THEME;
 use pretty_duration::pretty_duration;
 use std::time::Duration;
 use geoutils::Location;
+use crate::app::Preferences;
+use crate::PREFERENCES;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct NodesTab {
     row_index: usize,
     pub node_list: HashMap<u32, ComprehensiveNode>,
     table_state: TableState,
     scrollbar_state: ScrollbarState,
     vertical_scroll: i32,
-    pub my_node_id: u32
+    pub my_node_id: u32,
+    prefs: Preferences
 }
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComprehensiveNode {
     pub node_info: NodeInfo,
     pub last_seen: u64,
-    pub neighbors: Vec<Neighbor>
+    pub neighbors: Vec<Neighbor>,
+    pub last_snr: f32,
+    pub last_rssi: i32
 }
 
 impl NodesTab {
@@ -63,17 +68,19 @@ impl Widget for NodesTab {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
         // herein lies the ui code for the tab
         let node_list_constraints = vec![
-            Constraint::Length(10),
-            Constraint::Length(5),
-            Constraint::Length(5),
-            Constraint::Min(40),
-            Constraint::Length(12),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Min(10),
-            Constraint::Min(10),
+            Constraint::Max(10), // ID
+            Constraint::Max(5), // Hops
+            Constraint::Max(5), // ShortName
+            Constraint::Max(24), // LongName
+            Constraint::Max(25), // RF Details
+            Constraint::Length(12), // Distance
+            Constraint::Length(10), // Latitude
+            Constraint::Length(10), // Longitude
+            Constraint::Length(10), // Altitude
+            Constraint::Length(10), // Voltage
+            Constraint::Max(8), // Battery
+            Constraint::Max(20), // Last Heard
+            Constraint::Max(20), // Last Updated
         ];
 
         // We sort by last heard, in reverse order, so that the most recent update is at the top.
@@ -86,19 +93,22 @@ impl Widget for NodesTab {
             if let Some(pos) = my_node.clone().node_info.position {
                 let lat = pos.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                 let lon = pos.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
-                my_location = Some(Location::new(lat, lon));
+                if lat.ne(&0.0) && lon.ne(&0.0) {
+                    my_location = Some(Location::new(lat, lon));
+                }
             }
         }
 
         let rows = node_vec.iter()
             .map(|cn| {
+                let mut transmit: bool = true;
                 let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
                 let device = cn.clone().node_info.device_metrics.unwrap_or_else(|| DeviceMetrics::default());
                 let mut position = cn.clone().node_info.position.unwrap_or_else(|| Position::default());
 
                 let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                 let station_lon = position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
-                let mut distance_str = "Unknown".to_string();
+                let mut distance_str = "".to_string();
                 if my_location.is_some() {
                     let station_location = Location::new(station_lat,station_lon);
                     let distance = station_location.distance_to(&my_location.unwrap()).ok();
@@ -127,28 +137,70 @@ impl Widget for NodesTab {
                 lastupdate_since = now_secs.saturating_sub(cn.last_seen);
                 if (lastupdate_since >= 0) && (lastupdate_since != now_secs) {
                     lastupdate_since_string = pretty_duration(&Duration::from_secs(lastupdate_since), None);
+
+                }
+                let mut station_lat_str = "".to_string();
+                if station_lat.ne(&0.0) {
+                    station_lat_str = station_lat.to_string()
+                }
+                let mut station_lon_str = "".to_string();
+                if station_lon.ne(&0.0) {
+                    station_lon_str = station_lon.to_string()
                 }
 
+                let mut altitude_str = "".to_string();
+                if position.altitude.ne(&0) {
+                    altitude_str = format!("{}m", position.altitude.to_string());
+                };
 
-                Row::new(vec![
-                    user.id,
-                    hops,
-                    user.short_name,
-                    user.long_name,
-                    distance_str,
-                    station_lat.to_string(),
-                    station_lon.to_string(),
-                    position.altitude.to_string(),
-                    format!("{}V", device.voltage),
-                    format!("{}%", device.battery_level),
-                    lastupdate_since_string,
-                    ni_lastheard_since_string
-                ])
+                let mut voltage_str = "".to_string();
+                if device.voltage.gt(&0.0) {
+                    let voltage_str = format!("{:.2}V",device.voltage);
+                }
+                let mut battery_str = "".to_string();
+                if device.battery_level.gt(&0) && device.battery_level.le(&100) {
+                    battery_str = format!("{:.2}%", device.battery_level);
+                };
+
+                let mut rf_str = "".to_string();
+                if cn.last_snr.ne(&0.0) && !cn.node_info.via_mqtt {
+                    rf_str = format!("SNR:{:.2}dB / RSSI:{:.0}dB",cn.last_snr, cn.last_rssi);
+                }
+
+                // I don't want to blocking read every loop iteration so we'll cheat and set
+                // self.prefs here, avoiding ::new(),::default() adjusting shenanigans.
+                if self.prefs.initialized.len() == 0 {
+                    let prefs = PREFERENCES.try_read().unwrap();
+                    self.prefs = prefs.clone();
+                }
+
+                if !self.prefs.show_mqtt && cn.node_info.via_mqtt {
+                    transmit = false;
+                }
+                if transmit {
+                    Row::new(vec![
+                        user.id,
+                        hops,
+                        user.short_name,
+                        user.long_name,
+                        rf_str,
+                        distance_str,
+                        station_lat_str,
+                        station_lon_str,
+                        altitude_str,
+                        voltage_str,
+                        battery_str,
+                        ni_lastheard_since_string,
+                        lastupdate_since_string,
+                    ])
+                } else {
+                    Row::default()
+                }
             })
             .collect_vec();
 
         let header = Row::new(
-            vec!["ID", "Hops", "Short", "Long", "Distance", "Latitude", "Longitude", "Altitude", "Voltage", "Battery","Last Updated", "Last Heard NodeInfo"],
+            vec!["ID", "Hops", "Short", "Long", "RF Details", "Distance", "Latitude", "Longitude", "Altitude", "Voltage", "Battery","Last Heard NodeInfo","Last Update"],
         ).set_style(THEME.message_header)
             .bottom_margin(1);
 

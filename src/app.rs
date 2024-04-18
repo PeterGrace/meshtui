@@ -2,7 +2,6 @@ use crate::ipc::IPCMessage;
 use crate::{tui, util};
 use crate::tui::Event;
 use anyhow::Result;
-use itertools::Itertools;
 use crate::consts;
 use color_eyre::eyre::WrapErr;
 use time::OffsetDateTime;
@@ -20,10 +19,11 @@ use crate::theme::THEME;
 use tokio::sync::{
     mpsc,
 };
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle};
 use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
 use crate::packet_handler::{process_packet, PacketResponse};
+use crate::tabs::nodes::ComprehensiveNode;
 
 #[derive(Debug, Default, Clone)]
 pub struct App {
@@ -35,7 +35,14 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
-    pub connection: Connection
+    pub connection: Connection,
+    pub user_prefs: Preferences
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Preferences {
+    pub(crate) initialized: String,
+    pub(crate) show_mqtt: bool
 }
 #[derive(Debug, Clone, Default)]
 pub enum Connection {
@@ -65,14 +72,15 @@ impl App {
 
         tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
 
-        let mut join_set = JoinSet::new();
 
-        let (fromradio_thread_tx, mut fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-        //let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
-        let to_tx = fromradio_thread_tx.clone();
-        let connection = self.connection.clone();
-        join_set.spawn(async move { meshtastic_loop(connection,to_tx).await });
+        let (mut fromradio_thread_tx, mut fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (mut toradio_thread_tx, mut toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+
+        let fromradio_tx = fromradio_thread_tx.clone();
+        let conn = self.connection.clone();
+
+        let mut join_handle: JoinHandle<Result<()>> = tokio::task::spawn(async move { meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await });
 
         while self.is_running() {
             // draw screen
@@ -127,6 +135,12 @@ impl App {
                             self.nodes_tab.node_list.insert(id, cn);
                         }
                         PacketResponse::InboundMessage(envelope) => {
+                            if let Some(cn) = self.nodes_tab.node_list.get(&envelope.source.num) {
+                                let mut ncn = cn.clone();
+                                ncn.last_rssi = envelope.rx_rssi;
+                                ncn.last_snr = envelope.rx_snr;
+                                self.nodes_tab.node_list.insert(envelope.source.num, ncn);
+                            }
                             self.messages_tab.messages.push(envelope);
                         }
                         PacketResponse::UserUpdate(id, user) => {
@@ -136,7 +150,10 @@ impl App {
                                 ncn.last_seen = util::get_secs();
                                 self.nodes_tab.node_list.insert(id, ncn);
                             } else {
-                                warn!("Received NodeInfo user update for node we weren't tracking.");
+                                let mut cn = ComprehensiveNode::default();
+                                cn.node_info.user = Some(user);
+                                cn.last_seen = util::get_secs();
+                                self.nodes_tab.node_list.insert(id, cn);
                             }
 
 
@@ -147,9 +164,23 @@ impl App {
                     }
                 }
             }
+
+            // tend to our threads
+            if join_handle.is_finished() {
+                if let Err(e) = join_handle.await {
+                    error!("Comms thread exited, restarting.  Err: {e}");
+                    (fromradio_thread_tx, fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                    (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                    let fromradio_tx = fromradio_thread_tx.clone();
+                    let conn = self.connection.clone();
+                    join_handle = tokio::task::spawn(async move { meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await });
+                }
+
+
+            }
         }
         tui.exit(); // stops event handler, exits raw mode, exits alternate screen
-        join_set.abort_all();
+        join_handle.abort();
         Ok(())
     }
     fn draw(&self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
@@ -308,6 +339,7 @@ impl App {
         }
     }
 }
+
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
