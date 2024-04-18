@@ -22,7 +22,7 @@ pub(crate) async fn meshtastic_loop(tx: tokio::sync::mpsc::Sender<IPCMessage>) -
 
 
     let config_id = utils::generate_rand_id();
-    let mut stream_api = stream_api.configure(config_id).await?;
+    let _stream_api = stream_api.configure(config_id).await?;
     //stream_api.update_user()
     info!("Connected to meshtastic node!");
 

@@ -24,7 +24,7 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         info!("Updating Position for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                         cn.node_info.position = Some(data);
                                         cn.last_seen = util::get_secs();
-                                        return Some((de.source, cn));
+                                        return Some((cn.node_info.num, cn));
                                     }
                                     PortNum::TelemetryApp => {
                                         let data = meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()).unwrap();
@@ -33,14 +33,17 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                                 Variant::DeviceMetrics(dm) => {
                                                     let mut cn = match node_list.contains_key(&pa.from) {
                                                         true => node_list.get(&pa.from).unwrap().to_owned(),
-                                                        false => ComprehensiveNode::default()
+                                                       false => {
+                                                           warn!("We received DeviceMetrics from a node we don't have info on.  Ignoring.");
+                                                           return None;
+                                                       }
                                                     };
-                                                    info!("Updating DeviceInfo for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
+                                                    info!("Updating DeviceMetrics for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                                     cn.node_info.device_metrics = Some(dm);
                                                     cn.last_seen = util::get_secs();
-                                                    return Some((de.source, cn));
+                                                    return Some((cn.node_info.num, cn));
                                                 }
-                                                _ => {return None;}
+                                                _ => { return None; }
                                                 // Variant::EnvironmentMetrics(_) => {}
                                                 // Variant::AirQualityMetrics(_) => {}
                                                 // Variant::PowerMetrics(_) => {}
@@ -52,22 +55,33 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         let data = NeighborInfo::decode(de.payload.as_slice()).unwrap();
                                         let empty = ComprehensiveNode::default();
                                         for neighbor in data.neighbors.iter() {
-                                            let s_user = node_list.get(&pa.from).map_or(empty.clone(),|v| v.clone());
-                                            let d_user = node_list.get(&de.source).map_or(empty.clone(),|v| v.clone());
-                                            let n_user = node_list.get(&neighbor.node_id).map_or(empty.clone(),|v| v.clone());
-                                            info!("NeighborInfo: {} says that {} has neighbor {}",
-                                                            s_user.clone().node_info.user.unwrap().id,
-                                                            d_user.clone().node_info.user.unwrap().id,
-                                                            n_user.clone().node_info.user.unwrap().id);
+                                            let d_cn = node_list.get(&data.node_id).map_or(empty.clone(), |v| v.clone());
+                                            let n_cn = node_list.get(&neighbor.node_id).map_or(empty.clone(), |v| v.clone());
+
+                                            let mut hub = "Unknown".to_string();
+                                            let mut spoke = "Unknown".to_string();
+                                            if let Some(d_user) = d_cn.node_info.user {
+                                                hub = d_user.id;
+                                            }
+                                            if let Some(n_user) = n_cn.node_info.user {
+                                                spoke = n_user.id;
+                                            }
+                                            info!("NeighborInfo: {hub} has neighbor {spoke}");
                                         }
-                                        let mut cn = match node_list.get(&de.source) {
-                                            None => ComprehensiveNode::default(),
-                                            Some(n) => n.clone()
+                                        let mut cn = match node_list.get(&data.node_id) {
+                                            None => {
+                                                warn!("We received neighbor list from a node we don't have info on.  Ignoring.");
+                                                return None;
+                                            }
+                                            Some(n) => {
+                                                n.clone()
+                                            }
                                         };
                                         cn.neighbors = data.neighbors;
-                                        return Some((de.source, cn));
+                                        cn.last_seen = util::get_secs();
+                                        return Some((cn.node_info.num, cn));
                                     }
-                                    _ => { return None;}
+                                    _ => { return None; }
                                     // PortNum::TracerouteApp => {}
                                     // PortNum::TextMessageApp => {}
                                     // PortNum::NodeinfoApp => {}

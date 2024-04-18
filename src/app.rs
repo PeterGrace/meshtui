@@ -35,6 +35,7 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
+    pub my_node_id: u32
 }
 
 impl App {

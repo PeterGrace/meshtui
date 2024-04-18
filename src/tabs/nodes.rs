@@ -7,6 +7,7 @@ use crate::consts;
 use crate::theme::THEME;
 use pretty_duration::pretty_duration;
 use std::time::Duration;
+use geoutils::Location;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodesTab {
