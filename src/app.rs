@@ -174,10 +174,11 @@ impl App {
                                                 PortNum::TracerouteApp => {}
                                                 PortNum::NeighborinfoApp => {
                                                     let data = NeighborInfo::decode(de.payload.as_slice()).unwrap();
+                                                    let empty = NodeInfo::default();
                                                     for neighbor in data.neighbors {
-                                                        let s_user = self.nodes_tab.node_list.get(&pa.from).unwrap();
-                                                        let d_user = self.nodes_tab.node_list.get(&de.source).unwrap();
-                                                        let n_user = self.nodes_tab.node_list.get(&neighbor.node_id).unwrap();
+                                                        let s_user = self.nodes_tab.node_list.get(&pa.from).map_or(empty.clone(),|v| v.clone());
+                                                        let d_user = self.nodes_tab.node_list.get(&de.source).map_or(empty.clone(),|v| v.clone());
+                                                        let n_user = self.nodes_tab.node_list.get(&neighbor.node_id).map_or(empty.clone(),|v| v.clone());
                                                         info!("NeighborInfo: {} says that {} has neighbor {}",
                                                             s_user.clone().user.unwrap().id,
                                                             d_user.clone().user.unwrap().id,
