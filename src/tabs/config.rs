@@ -1,4 +1,4 @@
-use itertools::Itertools;
+
 use ratatui::{prelude::*, widgets::*};
 use crate::theme::THEME;
 

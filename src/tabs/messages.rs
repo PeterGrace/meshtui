@@ -1,4 +1,3 @@
-use crate::consts::DATE_FORMAT;
 use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*};
 use time::OffsetDateTime;

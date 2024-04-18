@@ -1,4 +1,3 @@
-use meshtastic::protobufs::from_radio::PayloadVariant;
 use crate::ipc::IPCMessage;
 use meshtastic::{
     api::StreamApi,
@@ -8,8 +7,6 @@ use anyhow::{
     Result,
     bail
 };
-use meshtastic::protobufs::FromRadio;
-use tokio::sync::mpsc::error::TryRecvError;
 
 pub(crate) async fn meshtastic_loop(tx: tokio::sync::mpsc::Sender<IPCMessage>) -> Result<()> {
     let stream_api = StreamApi::new();

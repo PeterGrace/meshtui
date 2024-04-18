@@ -1,45 +1,29 @@
 use crate::ipc::IPCMessage;
-use crate::{tui, util};
+use crate::tui;
 use crate::tui::Event;
 use anyhow::Result;
 use itertools::Itertools;
 use crate::consts;
 use color_eyre::eyre::WrapErr;
-use crate::theme;
-use time::{
-    format_description::well_known::Rfc3339,
-    OffsetDateTime,
-};
+use time::OffsetDateTime;
 
 use crossterm::event::KeyCode;
-use crossterm::event::KeyCode::{Down, Esc, Left, Right, Up};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
-use meshtastic::Message;
-use meshtastic::protobufs::*;
-use meshtastic::protobufs::telemetry::Variant;
 use ratatui::{
-    layout::Constraint::*,
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, Tabs},
 };
-use ratatui::widgets::{Row, Table};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use tui_logger::TuiLoggerWidget;
 use crate::tabs::*;
 use crate::theme::THEME;
-use crate::tui::Event::Render;
-use tokio::task;
 use tokio::sync::{
-    broadcast,
     mpsc,
-    RwLock,
 };
 use tokio::task::JoinSet;
 use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::packet_handler::process_packet;
-use crate::tabs::nodes::ComprehensiveNode;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct App {
@@ -76,7 +60,7 @@ impl App {
         let mut join_set = JoinSet::new();
 
         let (fromradio_thread_tx, mut fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-        let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        //let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
         let to_tx = fromradio_thread_tx.clone();
         join_set.spawn(async move { meshtastic_loop(to_tx).await });

@@ -10,7 +10,6 @@ mod meshtastic_interaction;
 mod ipc;
 mod packet_handler;
 mod util;
-mod menutabs;
 
 use tokio::io;
 use app::App;

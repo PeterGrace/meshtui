@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use crate::theme;
+
 
 pub struct Theme {
     pub root: Style,
