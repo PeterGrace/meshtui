@@ -901,6 +901,7 @@ dependencies = [
  "lazy_static",
  "log",
  "meshtastic",
+ "pretty-duration",
  "ratatui",
  "serde",
  "serde_derive",
@@ -1118,6 +1119,12 @@ name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
+
+[[package]]
+name = "pretty-duration"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8868e7264af614b3634ff0abbe37b178e61000611b8a75221aea40221924aba"
 
 [[package]]
 name = "prettyplease"

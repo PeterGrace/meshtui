@@ -19,6 +19,7 @@ pub struct Message {
 }
 
 impl MessagesTab {
+    pub fn enter_key(&mut self) {}
     pub fn prev_row(&mut self) {
         self.row_index = self.row_index.saturating_sub(1);
     }

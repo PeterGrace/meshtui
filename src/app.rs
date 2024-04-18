@@ -1,5 +1,5 @@
 use crate::ipc::IPCMessage;
-use crate::tui;
+use crate::{tui, util};
 use crate::tui::Event;
 use anyhow::Result;
 use itertools::Itertools;
@@ -7,8 +7,8 @@ use crate::consts;
 use color_eyre::eyre::WrapErr;
 use crate::theme;
 use time::{
-    OffsetDateTime,
     format_description::well_known::Rfc3339,
+    OffsetDateTime,
 };
 
 use crossterm::event::KeyCode;
@@ -37,6 +37,9 @@ use tokio::sync::{
 use tokio::task::JoinSet;
 use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
+use std::time::{SystemTime, UNIX_EPOCH};
+use crate::packet_handler::process_packet;
+use crate::tabs::nodes::ComprehensiveNode;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct App {
@@ -48,13 +51,6 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
-    pub event_log: Vec<EventLogItem>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct EventLogItem {
-    pub timestamp: String,
-    pub log_message: String,
 }
 
 impl App {
@@ -86,7 +82,10 @@ impl App {
         join_set.spawn(async move { meshtastic_loop(to_tx).await });
 
         while self.is_running() {
+            // draw screen
             self.draw(&mut tui.terminal);
+
+            // process input
             if let Some(evt) = tui.next().await {
                 if let Event::Key(press) = evt {
                     use KeyCode::*;
@@ -98,6 +97,7 @@ impl App {
                                 Char('l') | Right => self.next_tab(),
                                 Char('k') | Up => self.prev(),
                                 Char('j') | Down => self.next(),
+                                KeyCode::Enter => self.enter_key(),
                                 _ => {}
                             }
                         }
@@ -124,93 +124,13 @@ impl App {
                 }
             };
 
+            // execute action logic
             if let Ok(packet) = fromradio_thread_rx.try_recv() {
-                if let IPCMessage::FromRadio(fr) = packet {
-                    if let Some(some_fr) = fr.payload_variant {
-                        match some_fr {
-                            from_radio::PayloadVariant::Packet(pa) => {
-                                if let Some(payload) = pa.payload_variant {
-                                    match payload {
-                                        mesh_packet::PayloadVariant::Decoded(de) => {
-                                            match de.portnum() {
-                                                PortNum::TextMessageApp => {}
-                                                PortNum::PositionApp => {
-                                                    let data = Position::decode(de.payload.as_slice()).unwrap();
-                                                    let mut ni = match self.nodes_tab.node_list.contains_key(&pa.from) {
-                                                        true => self.nodes_tab.node_list.get(&pa.from).unwrap().to_owned(),
-                                                        false => NodeInfo::default()
-                                                    };
-                                                    info!("Updating Position for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,pa.from);
-                                                    ni.position = Some(data);
-                                                    self.nodes_tab.node_list.insert(de.source, ni);
-                                                }
-                                                PortNum::NodeinfoApp => {}
-                                                PortNum::RoutingApp => {}
-                                                PortNum::AdminApp => {}
-                                                PortNum::WaypointApp => {}
-                                                PortNum::ReplyApp => {}
-                                                PortNum::PaxcounterApp => {}
-                                                PortNum::StoreForwardApp => {}
-                                                PortNum::RangeTestApp => {}
-                                                PortNum::TelemetryApp => {
-                                                    let data = meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()).unwrap();
-                                                    if let Some(v) = data.variant {
-                                                        match v {
-                                                            Variant::DeviceMetrics(dm) => {
-                                                                let mut ni = match self.nodes_tab.node_list.contains_key(&pa.from) {
-                                                                    true => self.nodes_tab.node_list.get(&pa.from).unwrap().to_owned(),
-                                                                    false => NodeInfo::default()
-                                                                };
-                                                                info!("Updating DeviceInfo for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,pa.from);
-                                                                ni.device_metrics = Some(dm);
-                                                                self.nodes_tab.node_list.insert(de.source, ni);
-                                                            }
-                                                            Variant::EnvironmentMetrics(_) => {}
-                                                            Variant::AirQualityMetrics(_) => {}
-                                                            Variant::PowerMetrics(_) => {}
-                                                        }
-                                                    }
-                                                }
-                                                PortNum::TracerouteApp => {}
-                                                PortNum::NeighborinfoApp => {
-                                                    let data = NeighborInfo::decode(de.payload.as_slice()).unwrap();
-                                                    let empty = NodeInfo::default();
-                                                    for neighbor in data.neighbors {
-                                                        let s_user = self.nodes_tab.node_list.get(&pa.from).map_or(empty.clone(),|v| v.clone());
-                                                        let d_user = self.nodes_tab.node_list.get(&de.source).map_or(empty.clone(),|v| v.clone());
-                                                        let n_user = self.nodes_tab.node_list.get(&neighbor.node_id).map_or(empty.clone(),|v| v.clone());
-                                                        info!("NeighborInfo: {} says that {} has neighbor {}",
-                                                            s_user.clone().user.unwrap().id,
-                                                            d_user.clone().user.unwrap().id,
-                                                            n_user.clone().user.unwrap().id);
-                                                    }
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                        mesh_packet::PayloadVariant::Encrypted(_) => {}
-                                    }
-                                }
-                            }
-                            from_radio::PayloadVariant::MyInfo(mi) => {
-                                info!("My node number is {:#?}", mi.my_node_num);
-                            }
-                            from_radio::PayloadVariant::NodeInfo(ni) => {
-                                info!("Updating NodeInfo for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,ni.num);
-                                self.nodes_tab.node_list.insert(ni.num, ni);
-                            }
-                            from_radio::PayloadVariant::Config(_) => {}
-                            from_radio::PayloadVariant::LogRecord(_) => {}
-                            from_radio::PayloadVariant::ConfigCompleteId(_) => {}
-                            from_radio::PayloadVariant::Rebooted(_) => {}
-                            from_radio::PayloadVariant::ModuleConfig(_) => {}
-                            from_radio::PayloadVariant::Channel(_) => {}
-                            from_radio::PayloadVariant::QueueStatus(_) => {}
-                            from_radio::PayloadVariant::XmodemPacket(_) => {}
-                            from_radio::PayloadVariant::Metadata(_) => {}
-                            from_radio::PayloadVariant::MqttClientProxyMessage(_) => {}
-                        }
-                    }
+                let update = process_packet(packet, self.nodes_tab.node_list.clone()).await;
+                if update.is_some() {
+                    // we received an update on a node
+                    let (id, cn) = update.unwrap();
+                    self.nodes_tab.node_list.insert(id, cn);
                 }
             }
         }
@@ -259,6 +179,16 @@ impl App {
             _ => {}
         }
     }
+
+    fn enter_key(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.enter_key(),
+            MenuTabs::Messages => self.messages_tab.enter_key(),
+            MenuTabs::Config => self.config_tab.enter_key(),
+            _ => {}
+        }
+    }
+
     fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.cursor_position.saturating_sub(1);
         self.cursor_position = self.clamp_cursor(cursor_moved_left);
@@ -391,7 +321,6 @@ impl MenuTabs {
         let next_index = current_index.saturating_add(1);
         Self::from_repr(next_index).unwrap_or(self)
     }
-
     fn prev(self) -> Self {
         let current_index = self as usize;
         let prev_index = current_index.saturating_sub(1);
@@ -405,17 +334,11 @@ impl MenuTabs {
     }
 }
 
-//region "enums"
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     #[default]
     Running,
     Exiting,
-}
-
-pub enum CurrentlyEditing {
-    Key,
-    Value,
 }
 
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
@@ -433,5 +356,4 @@ enum InputMode {
     Normal,
     Editing,
 }
-//endregion
 
