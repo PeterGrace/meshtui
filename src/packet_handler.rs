@@ -1,14 +1,23 @@
 use std::collections::HashMap;
 use meshtastic::Message;
-use meshtastic::protobufs::{from_radio, mesh_packet, NeighborInfo, PortNum, Position, User};
-use meshtastic::protobufs::telemetry::Variant;
+use meshtastic::protobufs::{from_radio, mesh_packet, NeighborInfo, PortNum, Position, Routing, User, NodeInfo, telemetry, routing};
 use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::util;
 
 pub(crate) enum PacketResponse {
     NodeUpdate(u32, ComprehensiveNode),
+    UserUpdate(u32, User),
+    InboundMessage(MessageEnvelope),
     OurAddress(u32)
+}
+#[derive(Debug, Clone)]
+pub struct MessageEnvelope {
+    pub(crate) timestamp: u32,
+    pub(crate) source: NodeInfo,
+    pub(crate) destination: Option<NodeInfo>,
+    pub(crate) message: String
+
 }
 
 pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, ComprehensiveNode>) -> Option<PacketResponse> {
@@ -35,7 +44,7 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         let data = meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()).unwrap();
                                         if let Some(v) = data.variant {
                                             match v {
-                                                Variant::DeviceMetrics(dm) => {
+                                                telemetry::Variant::DeviceMetrics(dm) => {
                                                     let mut cn = match node_list.contains_key(&pa.from) {
                                                         true => node_list.get(&pa.from).unwrap().to_owned(),
                                                        false => {
@@ -86,14 +95,76 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         cn.last_seen = util::get_secs();
                                         return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                     }
-                                    _ => { return None; }
-                                    // PortNum::TracerouteApp => {}
-                                    // PortNum::TextMessageApp => {}
-                                    // PortNum::NodeinfoApp => {}
-                                    // PortNum::RoutingApp => {}
+                                    PortNum::NodeinfoApp => {
+                                        let data = User::decode(de.payload.as_slice()).unwrap();
+                                        info!("Received node info update for {} ({})",data.id, pa.from);
+                                        return Some(PacketResponse::UserUpdate(pa.from,data));
+                                    }
+                                    PortNum::RoutingApp => {
+                                        let data = Routing::decode(de.payload.as_slice()).unwrap();
+                                        if let Some(v) = data.variant {
+                                            match v {
+                                                routing::Variant::RouteRequest(r) => {
+                                                    info!("RouteRequest");
+                                                }
+                                                routing::Variant::RouteReply(rr) => {
+                                                    info!("RouteReply")
+                                                }
+                                                routing::Variant::ErrorReason(er) => {
+                                                    match er {
+                                                        0 => {
+                                                            info!("Routing Message: implicit ack on our outbound message id {} (a remote node rebroadcasted it)",de.request_id);
+                                                        }
+                                                        _ => {
+                                                            info!("Routing Error: message trace id {} has errorcode {}", de.request_id, er);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                    }
+                                    PortNum::TracerouteApp => {
+                                        info!("A Traceroute packet was received");
+                                    }
+                                    PortNum::ReplyApp => {
+                                        info!("We were just pinged.");
+                                    }
+
+                                    PortNum::TextMessageApp => {
+                                        if let Some(message) = String::from_utf8(de.payload).ok() {
+
+                                            let source_ni = match node_list.get(&pa.from) {
+                                                Some(s) => s.clone().node_info,
+                                                None => {
+                                                    info!("Could not find node info for id {}", pa.from);
+                                                    return None;
+                                                }
+                                            };
+                                            let dest_ni = match node_list.get(&pa.to) {
+                                                Some(s) => Some(s.clone().node_info),
+                                                None =>  None
+                                            };
+
+                                            return Some(PacketResponse::InboundMessage(MessageEnvelope {
+                                                timestamp: pa.rx_time,
+                                                source: source_ni,
+                                                destination: dest_ni,
+                                                message: message
+                                            }));
+                                        } else {
+                                            warn!("Unable to decode text message to utf8 from ({})", de.source);
+                                        }
+                                    }
+                                    _ => {
+                                        panic!("{:#?}", de);
+                                        return None;
+                                    }
+
+
                                     // PortNum::AdminApp => {}
                                     // PortNum::WaypointApp => {}
-                                    // PortNum::ReplyApp => {}
+
                                     // PortNum::PaxcounterApp => {}
                                     // PortNum::StoreForwardApp => {}
                                     // PortNum::RangeTestApp => {}

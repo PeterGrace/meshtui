@@ -1,21 +1,18 @@
 use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*};
 use time::OffsetDateTime;
+use crate::consts;
+use crate::packet_handler::MessageEnvelope;
+use crate::tabs::nodes::ComprehensiveNode;
 use crate::theme::THEME;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct MessagesTab {
     row_index: usize,
-    pub messages: Vec<Message>,
+    pub messages: Vec<MessageEnvelope>,
     table_state: TableState,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Message {
-    pub time: OffsetDateTime,
-    pub source: String,
-    pub message: String,
-}
 
 impl MessagesTab {
     pub fn enter_key(&mut self) {}
@@ -33,28 +30,26 @@ impl Widget for MessagesTab {
         // herein lies the ui code for the tab
 
         let message_table_constraints = vec![
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Min(0),
+            Constraint::Length(20),
+            Constraint::Length(32),
+            Constraint::Length(32),
+            Constraint::Min(50),
         ];
 
-        let mut TEST_MESSAGES: Vec<Message> = vec![Message {
-            time: OffsetDateTime::now_utc(),
-            source: "Foobar".to_string(),
-            message: "Bazbat".to_string()
-        }];
-        TEST_MESSAGES.push(Message {
-            time: OffsetDateTime::now_utc(),
-            source: "RandomId".to_string(),
-            message: "RandomMessage".to_string()
-        });
-
-        let rows = TEST_MESSAGES.iter()
+        self.messages.sort_by(|a,b| a.timestamp.cmp(&b.timestamp));
+        let rows = self.messages.iter()
             .map(|message| {
+                let dt = OffsetDateTime::from_unix_timestamp(message.timestamp as i64).unwrap();
+                let mut destination_str = "Unknown".to_string();
+                if let Some(destination) = message.clone().destination {
+                    destination_str = format!("{}/{}",destination.channel, destination.user.unwrap().short_name);
+                }
+
                 Row::new(vec![
-                    "2024-99-99 99:99:99",
-                    message.source.as_str(),
-                    message.message.as_str()])
+                    format!("{}", dt.format(consts::DATE_FORMAT).unwrap()),
+                    message.source.user.clone().unwrap().long_name,
+                    destination_str,
+                    message.clone().message])
             })
             .collect_vec();
 
@@ -67,7 +62,7 @@ impl Widget for MessagesTab {
                 .style(THEME.middle);
 
         let header = Row::new(
-          vec!["Time", "Source", "Message"],
+          vec!["Time", "Source", "Destination", "Message"],
         ).set_style(THEME.message_header)
             .bottom_margin(1);
 

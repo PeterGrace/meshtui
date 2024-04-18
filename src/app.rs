@@ -1,5 +1,5 @@
 use crate::ipc::IPCMessage;
-use crate::tui;
+use crate::{tui, util};
 use crate::tui::Event;
 use anyhow::Result;
 use itertools::Itertools;
@@ -7,7 +7,7 @@ use crate::consts;
 use color_eyre::eyre::WrapErr;
 use time::OffsetDateTime;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseEventKind};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use ratatui::{
     prelude::*,
@@ -25,7 +25,7 @@ use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
 use crate::packet_handler::{process_packet, PacketResponse};
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone)]
 pub struct App {
     pub mode: Mode,
     pub tab: MenuTabs,
@@ -35,6 +35,14 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
+    pub connection: Connection
+}
+#[derive(Debug, Clone, Default)]
+pub enum Connection {
+    TCP(String, u16),
+    Serial(String),
+    #[default]
+    None
 }
 
 impl App {
@@ -63,7 +71,8 @@ impl App {
         //let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
         let to_tx = fromradio_thread_tx.clone();
-        join_set.spawn(async move { meshtastic_loop(to_tx).await });
+        let connection = self.connection.clone();
+        join_set.spawn(async move { meshtastic_loop(connection,to_tx).await });
 
         while self.is_running() {
             // draw screen
@@ -116,6 +125,21 @@ impl App {
                     match update.unwrap() {
                         PacketResponse::NodeUpdate(id, cn) => {
                             self.nodes_tab.node_list.insert(id, cn);
+                        }
+                        PacketResponse::InboundMessage(envelope) => {
+                            self.messages_tab.messages.push(envelope);
+                        }
+                        PacketResponse::UserUpdate(id, user) => {
+                            if let Some(cn) = self.nodes_tab.node_list.get(&id) {
+                                let mut ncn = cn.clone();
+                                ncn.node_info.user = Some(user);
+                                ncn.last_seen = util::get_secs();
+                                self.nodes_tab.node_list.insert(id, ncn);
+                            } else {
+                                warn!("Received NodeInfo user update for node we weren't tracking.");
+                            }
+
+
                         }
                         PacketResponse::OurAddress(id) => {
                             self.nodes_tab.my_node_id = id;

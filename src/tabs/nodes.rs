@@ -67,7 +67,7 @@ impl Widget for NodesTab {
             Constraint::Length(5),
             Constraint::Length(5),
             Constraint::Min(40),
-            Constraint::Length(10),
+            Constraint::Length(12),
             Constraint::Length(10),
             Constraint::Length(10),
             Constraint::Length(10),
