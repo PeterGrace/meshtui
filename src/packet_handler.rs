@@ -6,7 +6,12 @@ use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::util;
 
-pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, ComprehensiveNode>) -> Option<(u32, ComprehensiveNode)> {
+pub(crate) enum PacketResponse {
+    NodeUpdate(u32, ComprehensiveNode),
+    OurAddress(u32)
+}
+
+pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, ComprehensiveNode>) -> Option<PacketResponse> {
     if let IPCMessage::FromRadio(fr) = packet {
         if let Some(some_fr) = fr.payload_variant {
             match some_fr {
@@ -24,7 +29,7 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         info!("Updating Position for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                         cn.node_info.position = Some(data);
                                         cn.last_seen = util::get_secs();
-                                        return Some((cn.node_info.num, cn));
+                                        return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                     }
                                     PortNum::TelemetryApp => {
                                         let data = meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()).unwrap();
@@ -41,7 +46,7 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                                     info!("Updating DeviceMetrics for {} ({})",cn.clone().node_info.user.unwrap_or_else(|| User::default()).id,pa.from);
                                                     cn.node_info.device_metrics = Some(dm);
                                                     cn.last_seen = util::get_secs();
-                                                    return Some((cn.node_info.num, cn));
+                                                    return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                                 }
                                                 _ => { return None; }
                                                 // Variant::EnvironmentMetrics(_) => {}
@@ -79,7 +84,7 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                                         };
                                         cn.neighbors = data.neighbors;
                                         cn.last_seen = util::get_secs();
-                                        return Some((cn.node_info.num, cn));
+                                        return Some(PacketResponse::NodeUpdate(cn.node_info.num, cn));
                                     }
                                     _ => { return None; }
                                     // PortNum::TracerouteApp => {}
@@ -104,14 +109,14 @@ pub async fn process_packet(packet: IPCMessage, node_list: HashMap<u32, Comprehe
                 }
                 from_radio::PayloadVariant::MyInfo(mi) => {
                     info!("My node number is {:#?}", mi.my_node_num);
-                    return None;
+                    return Some(PacketResponse::OurAddress(mi.my_node_num));
                 }
                 from_radio::PayloadVariant::NodeInfo(ni) => {
                     info!("Updating NodeInfo for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,ni.num);
                     let mut cn = ComprehensiveNode::default();
                     cn.node_info = ni.clone();
                     cn.last_seen = util::get_secs();
-                    return Some((ni.num, cn));
+                    return Some(PacketResponse::NodeUpdate(ni.num, cn));
                 }
                 _ => {
                     return None;

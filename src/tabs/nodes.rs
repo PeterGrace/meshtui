@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Div;
 use itertools::Itertools;
 use meshtastic::protobufs::*;
 use ratatui::{prelude::*, widgets::*};
@@ -16,6 +17,7 @@ pub struct NodesTab {
     table_state: TableState,
     scrollbar_state: ScrollbarState,
     vertical_scroll: i32,
+    pub my_node_id: u32
 }
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComprehensiveNode {
@@ -79,13 +81,32 @@ impl Widget for NodesTab {
         node_vec.sort_by(|a,b| a.last_seen.cmp(&b.last_seen));
         node_vec.reverse();
 
+        let mut my_location: Option<Location> = None;
+        if let Some(my_node) = self.node_list.get(&self.my_node_id) {
+            if let Some(pos) = my_node.clone().node_info.position {
+                let lat = pos.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                let lon = pos.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                my_location = Some(Location::new(lat, lon));
+            }
+        }
+
         let rows = node_vec.iter()
             .map(|cn| {
                 let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
                 let device = cn.clone().node_info.device_metrics.unwrap_or_else(|| DeviceMetrics::default());
                 let mut position = cn.clone().node_info.position.unwrap_or_else(|| Position::default());
-                if position.precision_bits <= 0 {
-                    position.precision_bits = 1;
+
+                let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                let station_lon = position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                let mut distance_str = "Unknown".to_string();
+                if my_location.is_some() {
+                    let station_location = Location::new(station_lat,station_lon);
+                    let distance = station_location.distance_to(&my_location.unwrap()).ok();
+                    if distance.is_some() {
+                        distance_str = format!("{:.3}km",distance.unwrap().meters().div(1000.0_f64));
+                    }
+
+
                 }
 
                 let hops: String = match cn.node_info.via_mqtt {
@@ -114,8 +135,9 @@ impl Widget for NodesTab {
                     hops,
                     user.short_name,
                     user.long_name,
-                    format!("{}", position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR),
-                    format!("{}", position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR),
+                    distance_str,
+                    station_lat.to_string(),
+                    station_lon.to_string(),
                     position.altitude.to_string(),
                     format!("{}V", device.voltage),
                     format!("{}%", device.battery_level),
@@ -126,7 +148,7 @@ impl Widget for NodesTab {
             .collect_vec();
 
         let header = Row::new(
-            vec!["ID", "Hops", "Short", "Long", "Latitude", "Longitude", "Altitude", "Voltage", "Battery","Last Updated", "Last Heard NodeInfo"],
+            vec!["ID", "Hops", "Short", "Long", "Distance", "Latitude", "Longitude", "Altitude", "Voltage", "Battery","Last Updated", "Last Heard NodeInfo"],
         ).set_style(THEME.message_header)
             .bottom_margin(1);
 
@@ -159,4 +181,3 @@ impl Widget for NodesTab {
             &mut self.scrollbar_state);
     }
 }
-

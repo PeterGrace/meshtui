@@ -23,7 +23,7 @@ use tokio::sync::{
 use tokio::task::JoinSet;
 use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
-use crate::packet_handler::process_packet;
+use crate::packet_handler::{process_packet, PacketResponse};
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct App {
@@ -35,7 +35,6 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
-    pub my_node_id: u32
 }
 
 impl App {
@@ -114,8 +113,14 @@ impl App {
                 let update = process_packet(packet, self.nodes_tab.node_list.clone()).await;
                 if update.is_some() {
                     // we received an update on a node
-                    let (id, cn) = update.unwrap();
-                    self.nodes_tab.node_list.insert(id, cn);
+                    match update.unwrap() {
+                        PacketResponse::NodeUpdate(id, cn) => {
+                            self.nodes_tab.node_list.insert(id, cn);
+                        }
+                        PacketResponse::OurAddress(id) => {
+                            self.nodes_tab.my_node_id = id;
+                        }
+                    }
                 }
             }
         }
