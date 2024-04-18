@@ -1,7 +1,7 @@
-pub(crate) mod nodes;
 mod config;
 mod messages;
+pub(crate) mod nodes;
 
-pub use nodes::NodesTab;
 pub use config::ConfigTab;
 pub use messages::MessagesTab;
+pub use nodes::NodesTab;

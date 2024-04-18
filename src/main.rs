@@ -1,28 +1,29 @@
 extern crate tokio;
-#[macro_use] extern crate tracing;
+#[macro_use]
+extern crate tracing;
 
 pub mod app;
-pub mod tui;
+mod clap;
 pub mod consts;
+mod ipc;
+mod meshtastic_interaction;
+mod packet_handler;
 mod tabs;
 mod theme;
-mod meshtastic_interaction;
-mod ipc;
-mod packet_handler;
+pub mod tui;
 mod util;
-mod clap;
+use crate::app::Connection;
+use crate::app::Preferences;
+use crate::clap::CliArgs;
 use ::clap::Parser;
-use tokio::io;
 use app::App;
+use lazy_static::lazy_static;
+use std::process;
+use tokio::io;
+use tokio::sync::RwLock;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::prelude::*;
-use std::process;
 use tui_logger::TuiTracingSubscriberLayer;
-use crate::app::Connection;
-use crate::clap::CliArgs;
-use lazy_static::lazy_static;
-use tokio::sync::RwLock;
-use crate::app::Preferences;
 
 lazy_static! {
     static ref PREFERENCES: RwLock<Preferences> = RwLock::new(Preferences::default());
@@ -55,4 +56,3 @@ async fn main() -> io::Result<()> {
 
     Ok(())
 }
-

@@ -1,29 +1,27 @@
-use crate::ipc::IPCMessage;
-use crate::{tui, util};
-use crate::tui::Event;
-use anyhow::Result;
 use crate::consts;
+use crate::ipc::IPCMessage;
+use crate::meshtastic_interaction::meshtastic_loop;
+use crate::packet_handler::{process_packet, PacketResponse};
+use crate::tabs::nodes::ComprehensiveNode;
+use crate::tabs::*;
+use crate::theme::THEME;
+use crate::tui::Event;
+use crate::{tui, util};
+use anyhow::Result;
 use color_eyre::eyre::WrapErr;
-use time::OffsetDateTime;
-
 use crossterm::event::{KeyCode, MouseEventKind};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
+use itertools::Itertools;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Tabs},
 };
-use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
-use tui_logger::TuiLoggerWidget;
-use crate::tabs::*;
-use crate::theme::THEME;
-use tokio::sync::{
-    mpsc,
-};
-use tokio::task::{JoinHandle};
-use crate::meshtastic_interaction::meshtastic_loop;
 use std::io;
-use crate::packet_handler::{process_packet, PacketResponse};
-use crate::tabs::nodes::ComprehensiveNode;
+use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
+use time::OffsetDateTime;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tui_logger::TuiLoggerWidget;
 
 #[derive(Debug, Default, Clone)]
 pub struct App {
@@ -36,20 +34,20 @@ pub struct App {
     pub cursor_position: usize,
     pub input: String,
     pub connection: Connection,
-    pub user_prefs: Preferences
+    pub user_prefs: Preferences,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Preferences {
     pub(crate) initialized: String,
-    pub(crate) show_mqtt: bool
+    pub(crate) show_mqtt: bool,
 }
 #[derive(Debug, Clone, Default)]
 pub enum Connection {
     TCP(String, u16),
     Serial(String),
     #[default]
-    None
+    None,
 }
 
 impl App {
@@ -72,15 +70,17 @@ impl App {
 
         tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
 
-
-
-        let (mut fromradio_thread_tx, mut fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-        let (mut toradio_thread_tx, mut toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (mut fromradio_thread_tx, mut fromradio_thread_rx) =
+            mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+        let (mut toradio_thread_tx, mut toradio_thread_rx) =
+            mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
         let fromradio_tx = fromradio_thread_tx.clone();
         let conn = self.connection.clone();
 
-        let mut join_handle: JoinHandle<Result<()>> = tokio::task::spawn(async move { meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await });
+        let mut join_handle: JoinHandle<Result<()>> = tokio::task::spawn(async move {
+            meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await
+        });
 
         while self.is_running() {
             // draw screen
@@ -91,36 +91,34 @@ impl App {
                 if let Event::Key(press) = evt {
                     use KeyCode::*;
                     match self.input_mode {
-                        InputMode::Normal => {
-                            match press.code {
-                                Char('q') | Esc => { self.mode = Mode::Exiting; }
-                                Char('h') | Left => self.prev_tab(),
-                                Char('l') | Right => self.next_tab(),
-                                Char('k') | Up => self.prev(),
-                                Char('j') | Down => self.next(),
-                                KeyCode::Enter => self.enter_key(),
-                                _ => {}
+                        InputMode::Normal => match press.code {
+                            Char('q') | Esc => {
+                                self.mode = Mode::Exiting;
                             }
-                        }
-                        InputMode::Editing => {
-                            match press.code {
-                                KeyCode::Enter => {}
-                                KeyCode::Char(to_insert) => self.enter_char(to_insert),
-                                KeyCode::Backspace => {
-                                    self.delete_char();
-                                }
-                                KeyCode::Left => {
-                                    self.move_cursor_left();
-                                }
-                                KeyCode::Right => {
-                                    self.move_cursor_right();
-                                }
-                                KeyCode::Esc => {
-                                    self.input_mode = InputMode::Normal;
-                                }
-                                _ => {}
+                            Char('h') | Left => self.prev_tab(),
+                            Char('l') | Right => self.next_tab(),
+                            Char('k') | Up => self.prev(),
+                            Char('j') | Down => self.next(),
+                            KeyCode::Enter => self.enter_key(),
+                            _ => {}
+                        },
+                        InputMode::Editing => match press.code {
+                            KeyCode::Enter => {}
+                            KeyCode::Char(to_insert) => self.enter_char(to_insert),
+                            KeyCode::Backspace => {
+                                self.delete_char();
                             }
-                        }
+                            KeyCode::Left => {
+                                self.move_cursor_left();
+                            }
+                            KeyCode::Right => {
+                                self.move_cursor_right();
+                            }
+                            KeyCode::Esc => {
+                                self.input_mode = InputMode::Normal;
+                            }
+                            _ => {}
+                        },
                     }
                 }
             };
@@ -155,8 +153,6 @@ impl App {
                                 cn.last_seen = util::get_secs();
                                 self.nodes_tab.node_list.insert(id, cn);
                             }
-
-
                         }
                         PacketResponse::OurAddress(id) => {
                             self.nodes_tab.my_node_id = id;
@@ -167,16 +163,28 @@ impl App {
 
             // tend to our threads
             if join_handle.is_finished() {
-                if let Err(e) = join_handle.await {
-                    error!("Comms thread exited, restarting.  Err: {e}");
-                    (fromradio_thread_tx, fromradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-                    (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-                    let fromradio_tx = fromradio_thread_tx.clone();
-                    let conn = self.connection.clone();
-                    join_handle = tokio::task::spawn(async move { meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await });
+                match join_handle.await {
+                    Ok(r) => match r {
+                        Ok(_) => {
+                            unreachable!()
+                        }
+                        Err(e) => {
+                            error!("Comms thread exited, restarting.  Err: {e}");
+                            (fromradio_thread_tx, fromradio_thread_rx) =
+                                mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                            (toradio_thread_tx, toradio_thread_rx) =
+                                mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                            let fromradio_tx = fromradio_thread_tx.clone();
+                            let conn = self.connection.clone();
+                            join_handle = tokio::task::spawn(async move {
+                                meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await
+                            });
+                        }
+                    },
+                    Err(e) => {
+                        panic!("JoinError: {e}");
+                    }
                 }
-
-
             }
         }
         tui.exit(); // stops event handler, exits raw mode, exits alternate screen
@@ -188,7 +196,8 @@ impl App {
             .draw(|frame| {
                 frame.render_widget(self, frame.size());
             })
-            .wrap_err("terminal.draw").unwrap();
+            .wrap_err("terminal.draw")
+            .unwrap();
         Ok(())
     }
     fn is_running(&self) -> bool {
@@ -280,17 +289,14 @@ impl App {
         self.cursor_position = 0;
     }
     fn render_event_log(&self, area: Rect, buf: &mut Buffer) {
-        let block =
-            Block::new()
-                .borders(Borders::ALL)
-                .title("Event Log")
-                .title_alignment(Alignment::Center)
-                .border_set(symbols::border::DOUBLE)
-                .style(THEME.middle);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .title("Event Log")
+            .title_alignment(Alignment::Center)
+            .border_set(symbols::border::DOUBLE)
+            .style(THEME.middle);
 
-        TuiLoggerWidget::default()
-            .block(block)
-            .render(area, buf)
+        TuiLoggerWidget::default().block(block).render(area, buf)
     }
     fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
         let keys = [
@@ -310,12 +316,10 @@ impl App {
                 [key, desc]
             })
             .collect_vec();
-        spans.push(
-            Span::styled(
-                format!("| {}", dt.format(consts::DATE_FORMAT).unwrap()),
-                THEME.date_display,
-            )
-        );
+        spans.push(Span::styled(
+            format!("| {}", dt.format(consts::DATE_FORMAT).unwrap()),
+            THEME.date_display,
+        ));
         Line::from(spans)
             .centered()
             .style((Color::Indexed(236), Color::Indexed(232)))
@@ -328,7 +332,8 @@ impl App {
             .highlight_style(THEME.tabs_selected)
             .divider("")
             .padding("", "")
-            .select(self.tab as usize).render(area, buf);
+            .select(self.tab as usize)
+            .render(area, buf);
     }
     pub fn render_selected_tab(&self, area: Rect, buf: &mut Buffer) {
         match self.tab {
@@ -339,7 +344,6 @@ impl App {
         }
     }
 }
-
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -359,7 +363,6 @@ impl Widget for &App {
         App::render_bottom_bar(bottom_bar, buf);
     }
 }
-
 
 impl MenuTabs {
     fn next(self) -> Self {
@@ -402,4 +405,3 @@ enum InputMode {
     Normal,
     Editing,
 }
-

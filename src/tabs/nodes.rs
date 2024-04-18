@@ -1,16 +1,16 @@
-use std::collections::HashMap;
-use std::ops::Div;
-use itertools::Itertools;
-use meshtastic::protobufs::*;
-use ratatui::{prelude::*, widgets::*};
-use crate::util::get_secs;
+use crate::app::Preferences;
 use crate::consts;
 use crate::theme::THEME;
-use pretty_duration::pretty_duration;
-use std::time::Duration;
-use geoutils::Location;
-use crate::app::Preferences;
+use crate::util::get_secs;
 use crate::PREFERENCES;
+use geoutils::Location;
+use itertools::Itertools;
+use meshtastic::protobufs::*;
+use pretty_duration::pretty_duration;
+use ratatui::{prelude::*, widgets::*};
+use std::collections::HashMap;
+use std::ops::Div;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
 pub struct NodesTab {
@@ -20,7 +20,7 @@ pub struct NodesTab {
     scrollbar_state: ScrollbarState,
     vertical_scroll: i32,
     pub my_node_id: u32,
-    prefs: Preferences
+    prefs: Preferences,
 }
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComprehensiveNode {
@@ -28,7 +28,7 @@ pub struct ComprehensiveNode {
     pub last_seen: u64,
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
-    pub last_rssi: i32
+    pub last_rssi: i32,
 }
 
 impl NodesTab {
@@ -68,24 +68,24 @@ impl Widget for NodesTab {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
         // herein lies the ui code for the tab
         let node_list_constraints = vec![
-            Constraint::Max(10), // ID
-            Constraint::Max(5), // Hops
-            Constraint::Max(5), // ShortName
-            Constraint::Max(24), // LongName
-            Constraint::Max(25), // RF Details
+            Constraint::Max(10),    // ID
+            Constraint::Max(5),     // Hops
+            Constraint::Max(5),     // ShortName
+            Constraint::Max(24),    // LongName
+            Constraint::Max(25),    // RF Details
             Constraint::Length(12), // Distance
             Constraint::Length(10), // Latitude
             Constraint::Length(10), // Longitude
             Constraint::Length(10), // Altitude
             Constraint::Length(10), // Voltage
-            Constraint::Max(8), // Battery
-            Constraint::Max(20), // Last Heard
-            Constraint::Max(20), // Last Updated
+            Constraint::Max(8),     // Battery
+            Constraint::Max(20),    // Last Heard
+            Constraint::Max(20),    // Last Updated
         ];
 
         // We sort by last heard, in reverse order, so that the most recent update is at the top.
         let mut node_vec: Vec<ComprehensiveNode> = self.node_list.values().cloned().collect();
-        node_vec.sort_by(|a,b| a.last_seen.cmp(&b.last_seen));
+        node_vec.sort_by(|a, b| a.last_seen.cmp(&b.last_seen));
         node_vec.reverse();
 
         let mut my_location: Option<Location> = None;
@@ -99,29 +99,37 @@ impl Widget for NodesTab {
             }
         }
 
-        let rows = node_vec.iter()
+        let rows = node_vec
+            .iter()
             .map(|cn| {
                 let mut transmit: bool = true;
                 let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
-                let device = cn.clone().node_info.device_metrics.unwrap_or_else(|| DeviceMetrics::default());
-                let mut position = cn.clone().node_info.position.unwrap_or_else(|| Position::default());
+                let device = cn
+                    .clone()
+                    .node_info
+                    .device_metrics
+                    .unwrap_or_else(|| DeviceMetrics::default());
+                let mut position = cn
+                    .clone()
+                    .node_info
+                    .position
+                    .unwrap_or_else(|| Position::default());
 
                 let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                 let station_lon = position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                 let mut distance_str = "".to_string();
                 if my_location.is_some() {
-                    let station_location = Location::new(station_lat,station_lon);
+                    let station_location = Location::new(station_lat, station_lon);
                     let distance = station_location.distance_to(&my_location.unwrap()).ok();
                     if distance.is_some() {
-                        distance_str = format!("{:.3}km",distance.unwrap().meters().div(1000.0_f64));
+                        distance_str =
+                            format!("{:.3}km", distance.unwrap().meters().div(1000.0_f64));
                     }
-
-
                 }
 
                 let hops: String = match cn.node_info.via_mqtt {
                     true => "MQTT".to_string(),
-                    false => cn.node_info.hops_away.to_string()
+                    false => cn.node_info.hops_away.to_string(),
                 };
 
                 let mut now_secs = get_secs();
@@ -130,14 +138,15 @@ impl Widget for NodesTab {
                 let mut update_since_string = "Unknown".to_string();
                 ni_lastheard_since = now_secs.saturating_sub(cn.node_info.last_heard as u64);
                 if (ni_lastheard_since >= 0) && (ni_lastheard_since != now_secs) {
-                    ni_lastheard_since_string = pretty_duration(&Duration::from_secs(ni_lastheard_since), None);
+                    ni_lastheard_since_string =
+                        pretty_duration(&Duration::from_secs(ni_lastheard_since), None);
                 };
                 let mut lastupdate_since: u64 = 0;
                 let mut lastupdate_since_string: String = "Unknown".to_string();
                 lastupdate_since = now_secs.saturating_sub(cn.last_seen);
                 if (lastupdate_since >= 0) && (lastupdate_since != now_secs) {
-                    lastupdate_since_string = pretty_duration(&Duration::from_secs(lastupdate_since), None);
-
+                    lastupdate_since_string =
+                        pretty_duration(&Duration::from_secs(lastupdate_since), None);
                 }
                 let mut station_lat_str = "".to_string();
                 if station_lat.ne(&0.0) {
@@ -155,7 +164,7 @@ impl Widget for NodesTab {
 
                 let mut voltage_str = "".to_string();
                 if device.voltage.gt(&0.0) {
-                    let voltage_str = format!("{:.2}V",device.voltage);
+                    let voltage_str = format!("{:.2}V", device.voltage);
                 }
                 let mut battery_str = "".to_string();
                 if device.battery_level.gt(&0) && device.battery_level.le(&100) {
@@ -164,7 +173,7 @@ impl Widget for NodesTab {
 
                 let mut rf_str = "".to_string();
                 if cn.last_snr.ne(&0.0) && !cn.node_info.via_mqtt {
-                    rf_str = format!("SNR:{:.2}dB / RSSI:{:.0}dB",cn.last_snr, cn.last_rssi);
+                    rf_str = format!("SNR:{:.2}dB / RSSI:{:.0}dB", cn.last_snr, cn.last_rssi);
                 }
 
                 // I don't want to blocking read every loop iteration so we'll cheat and set
@@ -199,20 +208,30 @@ impl Widget for NodesTab {
             })
             .collect_vec();
 
-        let header = Row::new(
-            vec!["ID", "Hops", "Short", "Long", "RF Details", "Distance", "Latitude", "Longitude", "Altitude", "Voltage", "Battery","Last Heard NodeInfo","Last Update"],
-        ).set_style(THEME.message_header)
-            .bottom_margin(1);
+        let header = Row::new(vec![
+            "ID",
+            "Hops",
+            "Short",
+            "Long",
+            "RF Details",
+            "Distance",
+            "Latitude",
+            "Longitude",
+            "Altitude",
+            "Voltage",
+            "Battery",
+            "Last Heard NodeInfo",
+            "Last Update",
+        ])
+        .set_style(THEME.message_header)
+        .bottom_margin(1);
 
-
-        let block =
-            Block::new()
-                .borders(Borders::ALL)
-                .title("Nodes")
-                .title_alignment(Alignment::Center)
-                .border_set(symbols::border::DOUBLE)
-                .style(THEME.middle);
-
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .title("Nodes")
+            .title_alignment(Alignment::Center)
+            .border_set(symbols::border::DOUBLE)
+            .style(THEME.middle);
 
         let scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
@@ -224,12 +243,20 @@ impl Widget for NodesTab {
             Table::new(rows, node_list_constraints)
                 .block(block)
                 .header(header)
-                .highlight_style(THEME.tabs_selected)
-            , area, buf, &mut self.table_state);
+                .highlight_style(THEME.tabs_selected),
+            area,
+            buf,
+            &mut self.table_state,
+        );
 
         StatefulWidget::render(
-            scrollbar, area.inner(&Margin { vertical: 1, horizontal: 0 }),
+            scrollbar,
+            area.inner(&Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
             buf,
-            &mut self.scrollbar_state);
+            &mut self.scrollbar_state,
+        );
     }
 }

@@ -1,6 +1,5 @@
-
-use ratatui::{prelude::*, widgets::*};
 use crate::theme::THEME;
+use ratatui::{prelude::*, widgets::*};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ConfigTab {
@@ -27,7 +26,8 @@ impl Widget for ConfigTab {
                     .title("Nodes")
                     .title_alignment(Alignment::Center)
                     .border_set(symbols::border::DOUBLE)
-                    .style(THEME.middle)
-            ).render(area, buf);
+                    .style(THEME.middle),
+            )
+            .render(area, buf);
     }
 }
