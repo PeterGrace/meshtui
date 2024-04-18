@@ -8,11 +8,12 @@ use color_eyre::eyre::WrapErr;
 use crate::theme;
 use time::{
     OffsetDateTime,
-    format_description::well_known::Rfc3339
+    format_description::well_known::Rfc3339,
 };
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyCode::{Down, Esc, Left, Right, Up};
+use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use meshtastic::Message;
 use meshtastic::protobufs::*;
 use meshtastic::protobufs::telemetry::Variant;
@@ -31,10 +32,12 @@ use tokio::task;
 use tokio::sync::{
     broadcast,
     mpsc,
-    RwLock
+    RwLock,
 };
 use tokio::task::JoinSet;
 use crate::meshtastic_interaction::meshtastic_loop;
+use std::io;
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct App {
     pub mode: Mode,
@@ -45,17 +48,28 @@ pub struct App {
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
-    pub event_log: Vec<EventLogItem>
+    pub event_log: Vec<EventLogItem>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EventLogItem {
     pub timestamp: String,
-    pub log_message: String
+    pub log_message: String,
 }
 
 impl App {
+    fn chain_hook(&mut self) {
+        let original_hook = std::panic::take_hook();
+
+        std::panic::set_hook(Box::new(move |panic| {
+            disable_raw_mode().unwrap();
+            crossterm::execute!(io::stdout(), LeaveAlternateScreen).unwrap();
+            original_hook(panic);
+        }));
+    }
+
     pub async fn run(&mut self) -> Result<()> {
+        self.chain_hook();
         let mut tui = tui::Tui::new()
             .unwrap()
             .tick_rate(consts::TICK_RATE)
@@ -69,7 +83,7 @@ impl App {
         let (toradio_thread_tx, toradio_thread_rx) = mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
         let to_tx = fromradio_thread_tx.clone();
-        join_set.spawn(async move {meshtastic_loop(to_tx).await});
+        join_set.spawn(async move { meshtastic_loop(to_tx).await });
 
         while self.is_running() {
             self.draw(&mut tui.terminal);
@@ -79,17 +93,17 @@ impl App {
                     match self.input_mode {
                         InputMode::Normal => {
                             match press.code {
-                                Char('q') | Esc => { self.mode = Mode::Exiting; },
+                                Char('q') | Esc => { self.mode = Mode::Exiting; }
                                 Char('h') | Left => self.prev_tab(),
                                 Char('l') | Right => self.next_tab(),
                                 Char('k') | Up => self.prev(),
                                 Char('j') | Down => self.next(),
                                 _ => {}
                             }
-                        },
+                        }
                         InputMode::Editing => {
                             match press.code {
-                                KeyCode::Enter => {},
+                                KeyCode::Enter => {}
                                 KeyCode::Char(to_insert) => self.enter_char(to_insert),
                                 KeyCode::Backspace => {
                                     self.delete_char();
@@ -105,10 +119,7 @@ impl App {
                                 }
                                 _ => {}
                             }
-
-                        },
-
-
+                        }
                     }
                 }
             };
@@ -125,10 +136,11 @@ impl App {
                                                 PortNum::TextMessageApp => {}
                                                 PortNum::PositionApp => {
                                                     let data = Position::decode(de.payload.as_slice()).unwrap();
-                                                    let mut ni = match self.nodes_tab.node_list.contains_key(&de.source) {
-                                                        true => self.nodes_tab.node_list.get(&de.source).unwrap().to_owned(),
+                                                    let mut ni = match self.nodes_tab.node_list.contains_key(&pa.from) {
+                                                        true => self.nodes_tab.node_list.get(&pa.from).unwrap().to_owned(),
                                                         false => NodeInfo::default()
                                                     };
+                                                    info!("Updating Position for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,pa.from);
                                                     ni.position = Some(data);
                                                     self.nodes_tab.node_list.insert(de.source, ni);
                                                 }
@@ -145,10 +157,11 @@ impl App {
                                                     if let Some(v) = data.variant {
                                                         match v {
                                                             Variant::DeviceMetrics(dm) => {
-                                                                let mut ni = match self.nodes_tab.node_list.contains_key(&de.source) {
-                                                                    true => self.nodes_tab.node_list.get(&de.source).unwrap().to_owned(),
+                                                                let mut ni = match self.nodes_tab.node_list.contains_key(&pa.from) {
+                                                                    true => self.nodes_tab.node_list.get(&pa.from).unwrap().to_owned(),
                                                                     false => NodeInfo::default()
                                                                 };
+                                                                info!("Updating DeviceInfo for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,pa.from);
                                                                 ni.device_metrics = Some(dm);
                                                                 self.nodes_tab.node_list.insert(de.source, ni);
                                                             }
@@ -159,20 +172,30 @@ impl App {
                                                     }
                                                 }
                                                 PortNum::TracerouteApp => {}
-                                                PortNum::NeighborinfoApp => {}
+                                                PortNum::NeighborinfoApp => {
+                                                    let data = NeighborInfo::decode(de.payload.as_slice()).unwrap();
+                                                    for neighbor in data.neighbors {
+                                                        let s_user = self.nodes_tab.node_list.get(&pa.from).unwrap();
+                                                        let d_user = self.nodes_tab.node_list.get(&de.source).unwrap();
+                                                        let n_user = self.nodes_tab.node_list.get(&neighbor.node_id).unwrap();
+                                                        info!("NeighborInfo: {} says that {} has neighbor {}",
+                                                            s_user.clone().user.unwrap().id,
+                                                            d_user.clone().user.unwrap().id,
+                                                            n_user.clone().user.unwrap().id);
+                                                    }
+                                                }
                                                 _ => {}
                                             }
                                         }
                                         mesh_packet::PayloadVariant::Encrypted(_) => {}
                                     }
                                 }
-
-
                             }
                             from_radio::PayloadVariant::MyInfo(mi) => {
                                 info!("My node number is {:#?}", mi.my_node_num);
-                            },
+                            }
                             from_radio::PayloadVariant::NodeInfo(ni) => {
+                                info!("Updating NodeInfo for {} ({})",ni.clone().user.unwrap_or_else(|| User::default()).id,ni.num);
                                 self.nodes_tab.node_list.insert(ni.num, ni);
                             }
                             from_radio::PayloadVariant::Config(_) => {}
@@ -292,7 +315,6 @@ impl App {
         TuiLoggerWidget::default()
             .block(block)
             .render(area, buf)
-
     }
     fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
         let keys = [
@@ -315,7 +337,7 @@ impl App {
         spans.push(
             Span::styled(
                 format!("| {}", dt.format(consts::DATE_FORMAT).unwrap()),
-                THEME.date_display
+                THEME.date_display,
             )
         );
         Line::from(spans)
@@ -350,7 +372,7 @@ impl Widget for &App {
                 Constraint::Length(1),
                 Constraint::Min(0),
                 Constraint::Length(12),
-                Constraint::Length(1)
+                Constraint::Length(1),
             ]);
         let [tabs, middle, event_log, bottom_bar] = layout.areas(area);
         Block::new().style(THEME.root).render(area, buf);
@@ -358,11 +380,8 @@ impl Widget for &App {
         self.render_selected_tab(middle, buf);
         self.render_event_log(event_log, buf);
         App::render_bottom_bar(bottom_bar, buf);
-
     }
 }
-
-
 
 
 impl MenuTabs {
@@ -384,6 +403,7 @@ impl MenuTabs {
         }
     }
 }
+
 //region "enums"
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -391,18 +411,21 @@ pub enum Mode {
     Running,
     Exiting,
 }
+
 pub enum CurrentlyEditing {
     Key,
     Value,
 }
+
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
 pub enum MenuTabs {
     #[default]
     Messages,
     Nodes,
     Config,
-    About
+    About,
 }
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum InputMode {
     #[default]
