@@ -12,6 +12,8 @@ mod tabs;
 mod theme;
 pub mod tui;
 mod util;
+
+use std::env::VarError;
 use crate::app::Connection;
 use crate::app::Preferences;
 use crate::clap::CliArgs;
@@ -30,6 +32,10 @@ lazy_static! {
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    if let Err(e) = std::env::var("RUST_LOG") {
+        std::env::set_var("RUST_LOG", "info");
+    }
+
     let collector = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
         .with(TuiTracingSubscriberLayer);
