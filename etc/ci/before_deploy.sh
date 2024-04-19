@@ -87,7 +87,7 @@ make_deb() {
             ;;
     esac
     version_full=${GITHUB_REF/refs\/tags\//}
-    version=${version/^v//}
+    version=${version_full/^v//}
 
     if [[ $TARGET = *musl* ]]; then
       dpkgname=$PACKAGE_NAME-musl
