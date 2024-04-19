@@ -38,7 +38,7 @@ impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
         &mut self,
         packet: FromRadio,
     ) -> std::result::Result<(), DeviceUpdateError> {
-        info!("handle_packet_from_radio called but not sure what to do");
+        debug!("handle_packet_from_radio called but not sure what to do");
         Ok(())
     }
 
@@ -46,7 +46,7 @@ impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
         &mut self,
         packet: MeshPacket,
     ) -> std::result::Result<(), DeviceUpdateError> {
-        info!("handle_mesh_packet called but not sure what to do here");
+        debug!("handle_mesh_packet called but not sure what to do here");
         Ok(())
     }
 

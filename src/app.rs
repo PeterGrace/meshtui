@@ -276,10 +276,8 @@ impl App {
     }
 
     async fn enter_key(&mut self) {
-        info!("Enter received");
         match self.input_mode {
             InputMode::Normal => {
-                info!("setting mode to edit");
                 self.input_mode = InputMode::Editing;
             }
             InputMode::Editing => {
