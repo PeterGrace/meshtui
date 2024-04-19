@@ -275,35 +275,46 @@ impl App {
         }
     }
 
-    async fn enter_key(&mut self) {
+    async fn enter_key_messages(&mut self) {
         match self.input_mode {
             InputMode::Normal => {
                 self.input_mode = InputMode::Editing;
             }
             InputMode::Editing => {
-                // do something with the enter key and then
-                info!("Sending message {} to LongFast", self.input.clone());
-                let message = MessageEnvelope {
-                    timestamp: 0,
-                    source: None,
-                    destination: PacketDestination::Broadcast,
-                    channel: MeshChannel::new(0).unwrap(),
-                    message: self.input.clone(),
-                    rx_rssi: 0,
-                    rx_snr: 0.0,
-                };
-                if let Err(e) = self
-                    .send_to_radio
-                    .clone()
-                    .unwrap()
-                    .send(IPCMessage::ToRadio(message))
-                    .await
-                {
-                    error!("Tried sending message but failed: {e}");
+                if self.input.len() > 0 {
+                    info!("Sending message {} to LongFast", self.input.clone());
+                    let message = MessageEnvelope {
+                        timestamp: 0,
+                        source: None,
+                        destination: PacketDestination::Broadcast,
+                        channel: MeshChannel::new(0).unwrap(),
+                        message: self.input.clone(),
+                        rx_rssi: 0,
+                        rx_snr: 0.0,
+                    };
+                    if let Err(e) = self
+                        .send_to_radio
+                        .clone()
+                        .unwrap()
+                        .send(IPCMessage::ToRadio(message))
+                        .await
+                    {
+                        error!("Tried sending message but failed: {e}");
+                    }
                 }
                 self.input = "".to_string();
                 self.input_mode = InputMode::Normal;
             }
+        }
+
+    }
+    async fn enter_key(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.enter_key(),
+            MenuTabs::Messages => self.enter_key_messages().await,
+            MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::About => self.about_tab.next_row(),
+            _ => {}
         }
     }
 
