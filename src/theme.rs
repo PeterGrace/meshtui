@@ -12,6 +12,7 @@ pub struct Theme {
     pub date_display: Style,
     pub message_header: Style,
     pub message_selected: Style,
+    pub warning_highlight: Style
 }
 pub struct NodesTheme {
     pub list: Style,
@@ -28,6 +29,9 @@ pub const THEME: Theme = Theme {
     tabs_selected: Style::new()
         .fg(MENU_COLOR_FOREGROUND)
         .bg(MENU_COLOR_HIGHLIGHT),
+    warning_highlight: Style::new()
+        .fg(MENU_COLOR_FOREGROUND)
+        .bg(Color::Magenta),
     footer: Style::new()
         .fg(MENU_COLOR_FOREGROUND)
         .bg(MENU_COLOR_BACKGROUND),

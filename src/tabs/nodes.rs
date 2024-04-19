@@ -1,5 +1,5 @@
 use crate::app::{Mode, Preferences};
-use crate::consts;
+use crate::{consts, util};
 use crate::theme::THEME;
 use crate::util::get_secs;
 use crate::PREFERENCES;
@@ -11,6 +11,8 @@ use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
+use meshtastic::protobufs::config::device_config::Role;
+use crate::consts::GPS_PRECISION_FACTOR;
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum DisplayMode {
@@ -30,6 +32,7 @@ pub struct NodesTab {
     pub my_node_id: u32,
     prefs: Preferences,
     pub display_mode: DisplayMode,
+    pub selected_node: ComprehensiveNode,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -68,13 +71,95 @@ impl NodesTab {
             .sort_by(|a, b| a.last_seen.cmp(&b.last_seen));
         self.table_contents.reverse();
     }
-    pub(crate) fn get_details_for_node(&self) -> String {
-        if let Some(index) = self.table_state.selected() {
-            format!("{:#?}", self.table_contents[index])
-        } else {
-            "".to_string()
+    pub(crate) fn get_details_for_node(&self) -> Table {
+        let cn = self.selected_node.clone();
+        let user = cn.node_info.user.unwrap();
+        let mut rows: Vec<Row> = vec![];
+        let constraints = vec![
+            Constraint::Max(20),
+            Constraint::Min(0),
+            Constraint::Min(0),
+            Constraint::Min(0),
+            Constraint::Min(0),
+        ];
+        if cn.node_info.via_mqtt {
+            rows.push(Row::new(vec!["====(VIA MQTT)===="]).style(THEME.warning_highlight));
         }
+
+        rows.push(Row::new(vec!["Id".to_string(), user.id.clone()]));
+
+
+        rows.push(Row::new(vec!["Name (Short)".to_string(),
+                                format!("{} ({})", user.long_name, user.short_name)]));
+
+        rows.push(Row::new(vec!["Hardware Model".to_string(),
+                                format!("{:?}", user.hw_model())]));
+        rows.push(Row::new(vec!["Licensed Operator".to_string(),
+                                format!("{}", user.is_licensed)]));
+        rows.push(Row::new(vec!["Device Role".to_string(),
+                                format!("{:?}", user.role())]));
+        rows.push(Row::new(vec!["Last RF SNR/RSSI".to_string(),
+                                format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi)]));
+
+        if let Some(device_metrics) = cn.node_info.device_metrics {
+            if device_metrics.air_util_tx > 0.0 {
+                rows.push(Row::new(vec!["Air/TX Utilization".to_string(),
+                                        format!("{:.2}%", device_metrics.air_util_tx)]));
+            }
+            if device_metrics.channel_utilization > 0.0 {
+                rows.push(Row::new(vec!["Channel Utilization".to_string(),
+                                        format!("{:.2}%", device_metrics.channel_utilization)]));
+            }
+
+            if device_metrics.voltage > 0.0 {
+                rows.push(Row::new(vec!["Device Voltage".to_string(),
+                                        format!("{:.2}V", device_metrics.voltage)]));
+            }
+            match device_metrics.battery_level {
+                1..=100 => {
+                    rows.push(Row::new(vec!["Battery Level".to_string(),
+                                            format!("{:.2}%", device_metrics.battery_level)]));
+                }
+                101 => {
+                    rows.push(Row::new(vec!["Battery Level".to_string(),
+                                            format!("Plugged-in")]));
+                }
+                _ => {}
+            }
+        }
+        if let Some(position) = cn.node_info.position {
+            if position.latitude_i != 0 {
+                rows.push(Row::new(vec!["Latitude".to_string(),
+                                        format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR))]));
+            }
+            if position.longitude_i != 0 {
+                rows.push(Row::new(vec!["Longitude".to_string(),
+                                        format!("{:.2}", position.longitude_i as f32 * (GPS_PRECISION_FACTOR))]));
+            }
+            if position.altitude > 0 {
+                rows.push(Row::new(vec!["Altitude".to_string(),
+                                        format!("{}m", position.altitude)]));
+            }
+        }
+        if cn.neighbors.len() > 0 {
+            rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
+            for (i, item) in cn.neighbors.iter().enumerate() {
+                let id = self.node_list.get(&item.node_id).unwrap().clone().node_info.user.unwrap().id;
+                let snr = format!("{:.2}dB", item.snr);
+                let mut last_seen: String = "Unknown".to_string();
+                if item.last_rx_time > 0 {
+                    last_seen = pretty_duration(&Duration::from_secs(util::get_secs().saturating_sub(item.last_rx_time as u64)), None);
+                }
+                rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
+            }
+        }
+
+
+        Table::new(rows, constraints)
+            .highlight_style(THEME.tabs_selected)
     }
+
+
     pub fn escape(&mut self) -> Mode {
         match self.display_mode {
             DisplayMode::List => Mode::Exiting,
@@ -88,6 +173,7 @@ impl NodesTab {
         match self.display_mode {
             DisplayMode::List => {
                 if let Some(index) = self.table_state.selected() {
+                    self.selected_node = self.table_contents[index].clone();
                     self.display_mode = DisplayMode::Detail
                 }
             }
@@ -145,10 +231,11 @@ impl Widget for NodesTab {
 
             Widget::render(Clear::default(), area, buf);
             Widget::render(popup_block, popup_area, buf);
-            Widget::render(
-                Paragraph::new(self.get_details_for_node()).style(THEME.message_selected),
-                crate::app::centered_rect(popup_area, 99, 99),
-                buf,
+            Widget::render(self.get_details_for_node(),
+                           crate::app::centered_rect(popup_area,
+                                                     95,
+                                                     95),
+                           buf,
             );
         } else {
             let node_list_constraints = vec![
@@ -297,8 +384,8 @@ impl Widget for NodesTab {
                 "Last Heard NodeInfo",
                 "Last Update",
             ])
-            .set_style(THEME.message_header)
-            .bottom_margin(1);
+                .set_style(THEME.message_header)
+                .bottom_margin(1);
 
             let block = Block::new()
                 .borders(Borders::ALL)
