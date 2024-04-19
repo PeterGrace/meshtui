@@ -76,8 +76,8 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.job.target }}
-          PROJECT_NAME: delta
-          PACKAGE_NAME: git-delta
+          PROJECT_NAME: meshtui
+          PACKAGE_NAME: meshtui
           OS_NAME: ${{ matrix.job.os }}
         run: ./etc/ci/before_deploy.sh
 
@@ -85,7 +85,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            delta-*-${{ matrix.job.target }}.*
-            git-delta*.deb
+            meshtui-*-${{ matrix.job.target }}.*
+            meshtui*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
