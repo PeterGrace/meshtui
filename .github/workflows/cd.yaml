@@ -1,6 +1,7 @@
 name: Continuous Deployment
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v?[0-9]+.[0-9]+.[0-9]+'
@@ -50,9 +51,9 @@ jobs:
         with:
           tool: cross
       - name: Install required dependencies
-        if: matrix.job.os == "ubuntu-latest"
         shell: bash
         run: |
+          if [[ ${{ matrix.job.os }} == ubuntu-latest ]]; then
           sudo apt update
           sudo apt-get -y install libdbus-1-dev pkg-config
           if [[ ${{ matrix.job.target }} == arm-unknown-linux-gnueabihf ]]; then
@@ -60,6 +61,7 @@ jobs:
           fi
           if [[ ${{ matrix.job.target }} == aarch64-unknown-linux-gnu ]]; then
               sudo apt-get install -y binutils-aarch64-linux-gnu
+          fi
           fi
 
       - name: Cargo build
