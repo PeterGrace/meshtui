@@ -1016,6 +1016,7 @@ dependencies = [
  "serde_json",
  "signal-hook",
  "strum",
+ "thiserror",
  "time",
  "time-macros",
  "tokio",

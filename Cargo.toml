@@ -31,3 +31,4 @@ tui-logger = { version = "0.11.0", features = ["tracing-support"]}
 pretty-duration = "0.1.1"
 geoutils = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env"] }
+thiserror = "1.0.58"

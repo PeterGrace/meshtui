@@ -11,10 +11,14 @@ pub struct MessagesTab {
     row_index: usize,
     pub messages: Vec<MessageEnvelope>,
     table_state: TableState,
+    editing: bool,
 }
 
 impl MessagesTab {
-    pub fn enter_key(&mut self) {}
+    pub fn enter_key(&mut self) {
+        info!("We got the enter key");
+        self.editing = !self.editing;
+    }
     pub fn prev_row(&mut self) {
         self.row_index = self.row_index.saturating_sub(1);
     }
@@ -40,19 +44,20 @@ impl Widget for MessagesTab {
             .messages
             .iter()
             .map(|message| {
-                let dt = OffsetDateTime::from_unix_timestamp(message.timestamp as i64).unwrap();
-                let mut destination_str = "Unknown".to_string();
-                if let Some(destination) = message.clone().destination {
-                    destination_str = format!(
-                        "{}/{}",
-                        destination.channel,
-                        destination.user.unwrap().short_name
-                    );
-                }
+                let dt =
+                    OffsetDateTime::from_unix_timestamp(message.clone().timestamp as i64).unwrap();
+                let mut destination_str = format!("Ch. {}", &message.channel);
 
                 Row::new(vec![
                     format!("{}", dt.format(consts::DATE_FORMAT).unwrap()),
-                    message.source.user.clone().unwrap().long_name,
+                    message
+                        .clone()
+                        .source
+                        .unwrap()
+                        .user
+                        .clone()
+                        .unwrap()
+                        .long_name,
                     destination_str,
                     message.clone().message,
                 ])

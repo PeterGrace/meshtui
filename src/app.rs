@@ -1,7 +1,7 @@
 use crate::consts;
 use crate::ipc::IPCMessage;
 use crate::meshtastic_interaction::meshtastic_loop;
-use crate::packet_handler::{process_packet, PacketResponse};
+use crate::packet_handler::{process_packet, MessageEnvelope, PacketResponse};
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::tabs::*;
 use crate::theme::THEME;
@@ -12,6 +12,10 @@ use color_eyre::eyre::WrapErr;
 use crossterm::event::{KeyCode, MouseEventKind};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use itertools::Itertools;
+use meshtastic::packet::PacketDestination;
+use meshtastic::protobufs::ToRadio;
+use meshtastic::types::MeshChannel;
+use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Tabs},
@@ -30,11 +34,38 @@ pub struct App {
     pub nodes_tab: NodesTab,
     pub config_tab: ConfigTab,
     pub messages_tab: MessagesTab,
+    pub about_tab: AboutTab,
     pub input_mode: InputMode,
     pub cursor_position: usize,
     pub input: String,
     pub connection: Connection,
     pub user_prefs: Preferences,
+    pub send_to_radio: Option<tokio::sync::mpsc::Sender<IPCMessage>>,
+}
+
+impl App {
+    pub(crate) fn render_send_message_popup(&self, area: Rect, buf: &mut Buffer) {
+        let popup_block = Block::default()
+            .title("Enter message")
+            .borders(Borders::ALL)
+            .title_alignment(Alignment::Center)
+            .border_set(symbols::border::DOUBLE)
+            .style(THEME.middle);
+        let popup_area = centered_rect(area, 60, 25);
+        let popup_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .margin(1)
+            .constraints([Constraint::Percentage(50)])
+            .split(popup_area);
+
+        Widget::render(Clear::default(), area, buf);
+        Widget::render(popup_block, popup_area, buf);
+        Widget::render(
+            Paragraph::new(self.input.clone()).style(THEME.message_selected),
+            centered_rect(popup_area, 75, 25),
+            buf,
+        );
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -75,6 +106,7 @@ impl App {
         let (mut toradio_thread_tx, mut toradio_thread_rx) =
             mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
+        self.send_to_radio = Some(toradio_thread_tx.clone());
         let fromradio_tx = fromradio_thread_tx.clone();
         let conn = self.connection.clone();
 
@@ -99,11 +131,11 @@ impl App {
                             Char('l') | Right => self.next_tab(),
                             Char('k') | Up => self.prev(),
                             Char('j') | Down => self.next(),
-                            KeyCode::Enter => self.enter_key(),
+                            KeyCode::Enter => self.enter_key().await,
                             _ => {}
                         },
                         InputMode::Editing => match press.code {
-                            KeyCode::Enter => {}
+                            KeyCode::Enter => self.enter_key().await,
                             KeyCode::Char(to_insert) => self.enter_char(to_insert),
                             KeyCode::Backspace => {
                                 self.delete_char();
@@ -133,11 +165,17 @@ impl App {
                             self.nodes_tab.node_list.insert(id, cn);
                         }
                         PacketResponse::InboundMessage(envelope) => {
-                            if let Some(cn) = self.nodes_tab.node_list.get(&envelope.source.num) {
+                            if let Some(cn) = self
+                                .nodes_tab
+                                .node_list
+                                .get(&envelope.clone().source.unwrap().num)
+                            {
                                 let mut ncn = cn.clone();
                                 ncn.last_rssi = envelope.rx_rssi;
                                 ncn.last_snr = envelope.rx_snr;
-                                self.nodes_tab.node_list.insert(envelope.source.num, ncn);
+                                self.nodes_tab
+                                    .node_list
+                                    .insert(envelope.clone().source.unwrap().num, ncn);
                             }
                             self.messages_tab.messages.push(envelope);
                         }
@@ -155,6 +193,7 @@ impl App {
                             }
                         }
                         PacketResponse::OurAddress(id) => {
+                            self.nodes_tab.my_node_id = id;
                             self.nodes_tab.my_node_id = id;
                         }
                     }
@@ -221,6 +260,7 @@ impl App {
             MenuTabs::Nodes => self.nodes_tab.prev_row(),
             MenuTabs::Messages => self.messages_tab.prev_row(),
             MenuTabs::Config => self.config_tab.prev_row(),
+            MenuTabs::About => self.about_tab.prev_row(),
             _ => {}
         }
     }
@@ -230,16 +270,42 @@ impl App {
             MenuTabs::Nodes => self.nodes_tab.next_row(),
             MenuTabs::Messages => self.messages_tab.next_row(),
             MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::About => self.about_tab.next_row(),
             _ => {}
         }
     }
 
-    fn enter_key(&mut self) {
-        match self.tab {
-            MenuTabs::Nodes => self.nodes_tab.enter_key(),
-            MenuTabs::Messages => self.messages_tab.enter_key(),
-            MenuTabs::Config => self.config_tab.enter_key(),
-            _ => {}
+    async fn enter_key(&mut self) {
+        info!("Enter received");
+        match self.input_mode {
+            InputMode::Normal => {
+                info!("setting mode to edit");
+                self.input_mode = InputMode::Editing;
+            }
+            InputMode::Editing => {
+                // do something with the enter key and then
+                info!("Sending message {} to LongFast", self.input.clone());
+                let message = MessageEnvelope {
+                    timestamp: 0,
+                    source: None,
+                    destination: PacketDestination::Broadcast,
+                    channel: MeshChannel::new(0).unwrap(),
+                    message: self.input.clone(),
+                    rx_rssi: 0,
+                    rx_snr: 0.0,
+                };
+                if let Err(e) = self
+                    .send_to_radio
+                    .clone()
+                    .unwrap()
+                    .send(IPCMessage::ToRadio(message))
+                    .await
+                {
+                    error!("Tried sending message but failed: {e}");
+                }
+                self.input = "".to_string();
+                self.input_mode = InputMode::Normal;
+            }
         }
     }
 
@@ -255,7 +321,6 @@ impl App {
 
     fn enter_char(&mut self, new_char: char) {
         self.input.insert(self.cursor_position, new_char);
-
         self.move_cursor_right();
     }
 
@@ -340,6 +405,7 @@ impl App {
             MenuTabs::Nodes => self.nodes_tab.clone().render(area, buf),
             MenuTabs::Messages => self.messages_tab.clone().render(area, buf),
             MenuTabs::Config => self.config_tab.clone().render(area, buf),
+            MenuTabs::About => self.about_tab.clone().render(area, buf),
             _ => {}
         }
     }
@@ -358,7 +424,10 @@ impl Widget for &App {
         let [tabs, middle, event_log, bottom_bar] = layout.areas(area);
         Block::new().style(THEME.root).render(area, buf);
         self.render_tabs(tabs, buf);
-        self.render_selected_tab(middle, buf);
+        match self.input_mode {
+            InputMode::Editing => self.render_send_message_popup(middle, buf),
+            InputMode::Normal => self.render_selected_tab(middle, buf),
+        }
         self.render_event_log(event_log, buf);
         App::render_bottom_bar(bottom_bar, buf);
     }
@@ -377,7 +446,6 @@ impl MenuTabs {
     }
     fn title(self) -> String {
         match self {
-            Self::About => String::new(),
             tab => format!(" {tab} "),
         }
     }
@@ -404,4 +472,23 @@ enum InputMode {
     #[default]
     Normal,
     Editing,
+}
+fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }

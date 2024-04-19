@@ -1,10 +1,12 @@
 use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::util;
+use meshtastic::packet::PacketDestination;
 use meshtastic::protobufs::{
     from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position,
     Routing, User,
 };
+use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
 
@@ -17,8 +19,9 @@ pub(crate) enum PacketResponse {
 #[derive(Debug, Clone)]
 pub struct MessageEnvelope {
     pub(crate) timestamp: u32,
-    pub(crate) source: NodeInfo,
-    pub(crate) destination: Option<NodeInfo>,
+    pub(crate) source: Option<NodeInfo>,
+    pub(crate) destination: PacketDestination,
+    pub(crate) channel: MeshChannel,
     pub(crate) message: String,
     pub(crate) rx_rssi: i32,
     pub(crate) rx_snr: f32,
@@ -197,12 +200,18 @@ pub async fn process_packet(
                                                 Some(s) => Some(s.clone().node_info),
                                                 None => None,
                                             };
+                                            let destinated: PacketDestination = match pa.to {
+                                                0 => PacketDestination::Local,
+                                                u32::MAX => PacketDestination::Broadcast,
+                                                s => PacketDestination::Node(s.into()),
+                                            };
 
                                             return Some(PacketResponse::InboundMessage(
                                                 MessageEnvelope {
                                                     timestamp: pa.rx_time,
-                                                    source: source_ni,
-                                                    destination: dest_ni,
+                                                    source: Some(source_ni),
+                                                    destination: destinated,
+                                                    channel: MeshChannel::from(pa.channel),
                                                     message: message,
                                                     rx_rssi: pa.rx_rssi,
                                                     rx_snr: pa.rx_snr,

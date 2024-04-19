@@ -5,8 +5,55 @@ use color_eyre::eyre::private::kind::TraitKind;
 use color_eyre::owo_colors::OwoColorize;
 use meshtastic::api::state::Connected;
 use meshtastic::api::ConnectedStreamApi;
-use meshtastic::packet::PacketReceiver;
+use meshtastic::packet::{PacketReceiver, PacketRouter};
+use meshtastic::protobufs::config::device_config::Role::Router;
+use meshtastic::protobufs::{FromRadio, MeshPacket};
+use meshtastic::types::NodeId;
 use meshtastic::{api::StreamApi, utils};
+use strum::Display;
+use thiserror::Error;
+
+#[derive(Display, Clone, Debug, Error)]
+pub enum DeviceUpdateError {
+    PacketNotSupported(String),
+    RadioMessageNotSupported(String),
+    DecodeFailure(String),
+    GeneralFailure(String),
+    EventDispatchFailure(String),
+    NotificationDispatchFailure(String),
+}
+#[derive(Default)]
+struct MyPacketRouter {
+    _source_node_id: NodeId,
+}
+impl MyPacketRouter {
+    fn new(node_id: u32) -> Self {
+        MyPacketRouter {
+            _source_node_id: node_id.into(),
+        }
+    }
+}
+impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
+    fn handle_packet_from_radio(
+        &mut self,
+        packet: FromRadio,
+    ) -> std::result::Result<(), DeviceUpdateError> {
+        info!("handle_packet_from_radio called but not sure what to do");
+        Ok(())
+    }
+
+    fn handle_mesh_packet(
+        &mut self,
+        packet: MeshPacket,
+    ) -> std::result::Result<(), DeviceUpdateError> {
+        info!("handle_mesh_packet called but not sure what to do here");
+        Ok(())
+    }
+
+    fn source_node_id(&self) -> NodeId {
+        self._source_node_id
+    }
+}
 
 pub(crate) async fn meshtastic_loop(
     connection: Connection,
@@ -37,9 +84,9 @@ pub(crate) async fn meshtastic_loop(
         }
     }
     let config_id = utils::generate_rand_id();
-    let _stream_api = connected_stream_api.configure(config_id).await?;
+    let mut _stream_api = connected_stream_api.configure(config_id).await?;
     info!("Connected to meshtastic node!");
-
+    let mut packet_router = MyPacketRouter::new(0);
     loop {
         match decoded_listener.try_recv() {
             Ok(fr) => {
@@ -51,8 +98,19 @@ pub(crate) async fn meshtastic_loop(
         }
         match rx.try_recv() {
             Ok(inbound) => {
-                if let IPCMessage::ToRadio(tr) = inbound {
-                    //_stream_api.send_text();
+                if let IPCMessage::ToRadio(message) = inbound {
+                    if let Err(e) = _stream_api
+                        .send_text(
+                            &mut packet_router,
+                            message.message,
+                            message.destination,
+                            true,
+                            message.channel,
+                        )
+                        .await
+                    {
+                        error!("We tried to send a message but... nope: {e}");
+                    }
                 } else {
                     warn!("Unknown ipc message sent into comms thread.");
                 }

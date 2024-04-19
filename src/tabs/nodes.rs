@@ -22,6 +22,7 @@ pub struct NodesTab {
     pub my_node_id: u32,
     prefs: Preferences,
 }
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComprehensiveNode {
     pub node_info: NodeInfo,
@@ -102,7 +103,7 @@ impl Widget for NodesTab {
         let rows = node_vec
             .iter()
             .map(|cn| {
-                let mut transmit: bool = true;
+                let mut add_this_entry: bool = true;
                 let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
                 let device = cn
                     .clone()
@@ -172,8 +173,12 @@ impl Widget for NodesTab {
                 };
 
                 let mut rf_str = "".to_string();
-                if cn.last_snr.ne(&0.0) && !cn.node_info.via_mqtt {
-                    rf_str = format!("SNR:{:.2}dB / RSSI:{:.0}dB", cn.last_snr, cn.last_rssi);
+                if !cn.node_info.via_mqtt {
+                    if cn.last_snr.ne(&0.0) {
+                        rf_str = format!("SNR:{:.2}dB / RSSI:{:.0}dB", cn.last_snr, cn.last_rssi);
+                    }
+                } else {
+                    rf_str = format!("MQTT");
                 }
 
                 // I don't want to blocking read every loop iteration so we'll cheat and set
@@ -184,9 +189,12 @@ impl Widget for NodesTab {
                 }
 
                 if !self.prefs.show_mqtt && cn.node_info.via_mqtt {
-                    transmit = false;
+                    add_this_entry = false;
                 }
-                if transmit {
+                if user.id.len() == 0 {
+                    add_this_entry = false;
+                }
+                if add_this_entry {
                     Row::new(vec![
                         user.id,
                         hops,
