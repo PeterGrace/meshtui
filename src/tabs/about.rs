@@ -1,3 +1,4 @@
+use crate::app::Mode;
 use crate::theme::THEME;
 use ratatui::{prelude::*, widgets::*};
 
@@ -7,6 +8,9 @@ pub struct AboutTab {
 }
 
 impl AboutTab {
+    pub fn escape(&mut self) -> Mode {
+        Mode::Exiting
+    }
     pub fn enter_key(&mut self) {}
     pub fn prev_row(&mut self) {
         self.row_index = self.row_index.saturating_sub(1);

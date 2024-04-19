@@ -73,6 +73,7 @@ pub struct Preferences {
     pub(crate) initialized: String,
     pub(crate) show_mqtt: bool,
 }
+
 #[derive(Debug, Clone, Default)]
 pub enum Connection {
     TCP(String, u16),
@@ -92,6 +93,16 @@ impl App {
         }));
     }
 
+    fn escape(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.mode = self.nodes_tab.escape(),
+            MenuTabs::Messages => self.mode = self.messages_tab.escape(),
+            MenuTabs::Config => self.mode = self.config_tab.escape(),
+            MenuTabs::About => self.mode = self.about_tab.escape(),
+            _ => self.mode = Mode::Exiting,
+        }
+    }
+
     pub async fn run(&mut self) -> Result<()> {
         self.chain_hook();
         let mut tui = tui::Tui::new()
@@ -99,7 +110,7 @@ impl App {
             .tick_rate(consts::TICK_RATE)
             .frame_rate(consts::FRAME_RATE);
 
-        tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
+        let _ = tui.enter(); // Starts event handler, enters raw mode, enters alternate screen
 
         let (mut fromradio_thread_tx, mut fromradio_thread_rx) =
             mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
@@ -115,8 +126,14 @@ impl App {
         });
 
         while self.is_running() {
+            // execute runs, if needed
+            match self.tab {
+                MenuTabs::Nodes => self.nodes_tab.run(),
+                _ => {}
+            }
+
             // draw screen
-            self.draw(&mut tui.terminal);
+            let _ = self.draw(&mut tui.terminal);
 
             // process input
             if let Some(evt) = tui.next().await {
@@ -124,9 +141,7 @@ impl App {
                     use KeyCode::*;
                     match self.input_mode {
                         InputMode::Normal => match press.code {
-                            Char('q') | Esc => {
-                                self.mode = Mode::Exiting;
-                            }
+                            Char('q') | Esc => self.escape(),
                             Char('h') | Left => self.prev_tab(),
                             Char('l') | Right => self.next_tab(),
                             Char('k') | Up => self.prev(),
@@ -226,7 +241,7 @@ impl App {
                 }
             }
         }
-        tui.exit(); // stops event handler, exits raw mode, exits alternate screen
+        let _ = tui.exit(); // stops event handler, exits raw mode, exits alternate screen
         join_handle.abort();
         Ok(())
     }
@@ -306,7 +321,6 @@ impl App {
                 self.input_mode = InputMode::Normal;
             }
         }
-
     }
     async fn enter_key(&mut self) {
         match self.tab {
@@ -483,7 +497,8 @@ enum InputMode {
     Normal,
     Editing,
 }
-fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
+
+pub(crate) fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

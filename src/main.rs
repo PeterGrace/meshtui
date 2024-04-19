@@ -13,13 +13,13 @@ mod theme;
 pub mod tui;
 mod util;
 
-use std::env::VarError;
 use crate::app::Connection;
 use crate::app::Preferences;
 use crate::clap::CliArgs;
 use ::clap::Parser;
 use app::App;
 use lazy_static::lazy_static;
+use std::env::VarError;
 use std::process;
 use tokio::io;
 use tokio::sync::RwLock;
@@ -55,9 +55,10 @@ async fn main() -> io::Result<()> {
         let mut prefs = PREFERENCES.write().await;
         // setting this to a nonzero length String to help indicate we're a bona-fide
         // preferences struct and not a ::default() generated one.
-        prefs.initialized = "Yes".to_string();
+        prefs.initialized = "Yes".to_owned();
         prefs.show_mqtt = cli.show_mqtt;
     }
+    assert!(PREFERENCES.read().await.initialized.len() > 0);
     let _ = app.run().await;
 
     Ok(())

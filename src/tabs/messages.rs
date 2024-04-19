@@ -1,3 +1,4 @@
+use crate::app::Mode;
 use crate::consts;
 use crate::packet_handler::MessageEnvelope;
 use crate::tabs::nodes::ComprehensiveNode;
@@ -15,6 +16,9 @@ pub struct MessagesTab {
 }
 
 impl MessagesTab {
+    pub fn escape(&mut self) -> Mode {
+        Mode::Exiting
+    }
     pub fn enter_key(&mut self) {
         info!("We got the enter key");
         self.editing = !self.editing;

@@ -65,13 +65,12 @@ pub(crate) async fn meshtastic_loop(
     let mut connected_stream_api;
     match connection {
         Connection::TCP(ip, port) => {
-            let tcp_stream =
-                match utils::stream::build_tcp_stream("10.174.2.41:4403".to_string()).await {
-                    Ok(sh) => sh,
-                    Err(e) => {
-                        bail!(e);
-                    }
-                };
+            let tcp_stream = match utils::stream::build_tcp_stream(format!("{ip}:{port}")).await {
+                Ok(sh) => sh,
+                Err(e) => {
+                    bail!(e);
+                }
+            };
             (decoded_listener, connected_stream_api) = stream_api.connect(tcp_stream).await;
         }
         Connection::Serial(device) => {

@@ -1,3 +1,4 @@
+use crate::app::Mode;
 use crate::theme::THEME;
 use ratatui::{prelude::*, widgets::*};
 
@@ -7,6 +8,9 @@ pub struct ConfigTab {
 }
 
 impl ConfigTab {
+    pub fn escape(&mut self) -> Mode {
+        Mode::Exiting
+    }
     pub fn enter_key(&mut self) {}
     pub fn prev_row(&mut self) {
         self.row_index = self.row_index.saturating_sub(1);
@@ -16,6 +20,7 @@ impl ConfigTab {
         self.row_index = self.row_index.saturating_add(1);
     }
 }
+
 impl Widget for ConfigTab {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // herein lies the ui code for the tab
