@@ -65,6 +65,18 @@ jobs:
             cargo build --release --target ${{ matrix.job.target }}
           fi
 
+      - name: Install required dependencies
+        shell: bash
+        run: |
+          if [[ ${{ matrix.job.target }} == arm-unknown-linux-gnueabihf ]]; then
+              sudo apt update
+              sudo apt-get install -y binutils-arm-linux-gnueabihf
+          fi
+          if [[ ${{ matrix.job.target }} == aarch64-unknown-linux-gnu ]]; then
+              sudo apt update
+              sudo apt-get install -y binutils-aarch64-linux-gnu
+          fi
+
       - name: Packaging final binary
         shell: bash
         env:
