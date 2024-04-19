@@ -367,6 +367,7 @@ impl App {
             ("L/→", "Right"),
             ("K/↑", "Up"),
             ("J/↓", "Down"),
+            ("Enter", "Interact/Send"),
             ("Q/Esc", "Quit"),
         ];
         let dt: OffsetDateTime = OffsetDateTime::now_utc();
