@@ -50,6 +50,7 @@ jobs:
         with:
           tool: cross
       - name: Install required dependencies
+        if: matrix.job.os == "ubuntu-latest"
         shell: bash
         run: |
           sudo apt update
