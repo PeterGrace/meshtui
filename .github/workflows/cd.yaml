@@ -50,10 +50,13 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cross
-      - name: Install required dependencies
+       
+      - name: Cargo build
+        env:
+          MACOSX_DEPLOYMENT_TARGET: 10.7
         shell: bash
         run: |
-          if [[ ${{ matrix.job.os }} == ubuntu-latest ]]; then
+           if [[ ${{ matrix.job.os }} == ubuntu-latest ]]; then
           sudo apt update
           sudo apt-get -y install libdbus-1-3 libdbus-1-dev pkg-config
           if [[ ${{ matrix.job.target }} == arm-unknown-linux-gnueabihf ]]; then
@@ -64,11 +67,6 @@ jobs:
           fi
           fi
 
-      - name: Cargo build
-        env:
-          MACOSX_DEPLOYMENT_TARGET: 10.7
-        shell: bash
-        run: |
           if [[ "${{ matrix.job.use-cross }}" == "true" ]]; then
             cross build --release --target ${{ matrix.job.target }}
           else
