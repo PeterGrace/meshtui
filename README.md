@@ -1,6 +1,6 @@
 # meshtui
-I'm beginning work on a Meshtastic tui tool.  It's at least a usable TUI interface at the moment but I don't have the meshtastic protobuf work created just yet.
+A console-based Text-User-Interface (TUI) for Meshtastic.
 
-Here's an early screenshot, tui style roughly based on Turbo Vision (since I'm old)
+`meshtui` allows you to connect either via serial port, or by ip address, to your meshtastic hardware and visualizes the information received.
 
 ![meshtui early screenshot](meshtui-screenshot.png)
