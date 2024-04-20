@@ -43,7 +43,7 @@ pub async fn process_packet(
                                         let data = Position::decode(de.payload.as_slice()).unwrap();
                                         let mut cn = match node_list.contains_key(&pa.from) {
                                             true => node_list.get(&pa.from).unwrap().to_owned(),
-                                            false => ComprehensiveNode::default(),
+                                            false => ComprehensiveNode::with_id(de.source),
                                         };
                                         info!(
                                             "Updating Position for {} ({})",
@@ -113,7 +113,7 @@ pub async fn process_packet(
                                     PortNum::NeighborinfoApp => {
                                         let data =
                                             NeighborInfo::decode(de.payload.as_slice()).unwrap();
-                                        let empty = ComprehensiveNode::default();
+                                        let empty = ComprehensiveNode::with_id(de.source);
                                         for neighbor in data.neighbors.iter() {
                                             let d_cn = node_list
                                                 .get(&data.node_id)
@@ -253,7 +253,7 @@ pub async fn process_packet(
                         ni.clone().user.unwrap_or_else(|| User::default()).id,
                         ni.num
                     );
-                    let mut cn = ComprehensiveNode::default();
+                    let mut cn = ComprehensiveNode::with_id(ni.num);
                     cn.node_info = ni.clone();
                     cn.last_seen = util::get_secs();
                     cn.last_rssi = 0;

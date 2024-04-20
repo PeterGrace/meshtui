@@ -37,11 +37,21 @@ pub struct NodesTab {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ComprehensiveNode {
+    pub id: u32,
     pub node_info: NodeInfo,
     pub last_seen: u64,
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
     pub last_rssi: i32,
+}
+
+impl ComprehensiveNode {
+    pub fn with_id(id: u32) -> Self {
+        let mut cn = ComprehensiveNode::default();
+        cn.id = id;
+        cn
+
+    }
 }
 
 impl NodesTab {
@@ -73,8 +83,6 @@ impl NodesTab {
     }
     pub(crate) fn get_details_for_node(&self) -> Table {
         let cn = self.selected_node.clone();
-        let user = cn.node_info.user.unwrap();
-        let mut rows: Vec<Row> = vec![];
         let constraints = vec![
             Constraint::Max(20),
             Constraint::Min(0),
@@ -82,25 +90,47 @@ impl NodesTab {
             Constraint::Min(0),
             Constraint::Min(0),
         ];
+        let mut rows: Vec<Row> = vec![];
+
         if cn.node_info.via_mqtt {
             rows.push(Row::new(vec!["====(VIA MQTT)===="]).style(THEME.warning_highlight));
         }
 
-        rows.push(Row::new(vec!["Id".to_string(), user.id.clone()]));
+        rows.push(Row::new(vec![
+            "Node id (num)".to_string(),
+            cn.id.to_string(),
+
+        ]));
+
+        //region User-struct display fields
+        if cn.node_info.user.is_some() {
+            let user = cn.node_info.user.unwrap();
+
+            rows.push(Row::new(vec!["Id".to_string(), user.id.clone()]));
 
 
-        rows.push(Row::new(vec!["Name (Short)".to_string(),
-                                format!("{} ({})", user.long_name, user.short_name)]));
+            rows.push(Row::new(vec!["Name (Short)".to_string(),
+                                    format!("{} ({})", user.long_name, user.short_name)]));
 
-        rows.push(Row::new(vec!["Hardware Model".to_string(),
-                                format!("{:?}", user.hw_model())]));
-        rows.push(Row::new(vec!["Licensed Operator".to_string(),
-                                format!("{}", user.is_licensed)]));
-        rows.push(Row::new(vec!["Device Role".to_string(),
-                                format!("{:?}", user.role())]));
+            rows.push(Row::new(vec!["Hardware Model".to_string(),
+                                    format!("{:?}", user.hw_model())]));
+            rows.push(Row::new(vec!["Licensed Operator".to_string(),
+                                    format!("{}", user.is_licensed)]));
+            rows.push(Row::new(vec!["Device Role".to_string(),
+                                    format!("{:?}", user.role())]));
+        } else {
+            rows.push(Row::new(vec![
+                "Id* (implied)".to_string(),
+                format!("*{:x}",cn.id)
+            ]));
+
+        }
+        //endregion
+
         rows.push(Row::new(vec!["Last RF SNR/RSSI".to_string(),
                                 format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi)]));
 
+        //region DeviceMetrics-struct display fields
         if let Some(device_metrics) = cn.node_info.device_metrics {
             if device_metrics.air_util_tx > 0.0 {
                 rows.push(Row::new(vec!["Air/TX Utilization".to_string(),
@@ -127,6 +157,9 @@ impl NodesTab {
                 _ => {}
             }
         }
+        //endregion
+
+        //region Position-struct display fields
         if let Some(position) = cn.node_info.position {
             if position.latitude_i != 0 {
                 rows.push(Row::new(vec!["Latitude".to_string(),
@@ -141,6 +174,9 @@ impl NodesTab {
                                         format!("{}m", position.altitude)]));
             }
         }
+        //endregion
+
+        //region NeighborApp display fields
         if cn.neighbors.len() > 0 {
             rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
             for (i, item) in cn.neighbors.iter().enumerate() {
@@ -153,7 +189,7 @@ impl NodesTab {
                 rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
             }
         }
-
+        //endregion
 
         Table::new(rows, constraints)
             .highlight_style(THEME.tabs_selected)
@@ -240,10 +276,11 @@ impl Widget for NodesTab {
         } else {
             let node_list_constraints = vec![
                 Constraint::Max(10),    // ID
-                Constraint::Max(5),     // Hops
                 Constraint::Max(5),     // ShortName
-                Constraint::Max(24),    // LongName
+                Constraint::Max(25),    // LongName
                 Constraint::Max(25),    // RF Details
+                Constraint::Max(5),     // Hops
+                Constraint::Max(10),     // Neighbors
                 Constraint::Length(12), // Distance
                 Constraint::Length(10), // Latitude
                 Constraint::Length(10), // Longitude
@@ -270,7 +307,13 @@ impl Widget for NodesTab {
                 .iter()
                 .map(|cn| {
                     let mut add_this_entry: bool = true;
+                    let mut user_id_str = "Unknown".to_string();
                     let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
+                    if user.id.len() > 0 {
+                        user_id_str = user.id;
+                    } else {
+                        user_id_str = format!("*{:x}", cn.clone().id);
+                    }
                     let device = cn
                         .clone()
                         .node_info
@@ -347,16 +390,18 @@ impl Widget for NodesTab {
                     } else {
                         rf_str = format!("MQTT");
                     }
+                    let neigh_str = format!("{}",cn.neighbors.len());
 
                     // I don't want to blocking read every loop iteration so we'll cheat and set
                     // self.prefs here, avoiding ::new(),::default() adjusting shenanigans.
 
                     Row::new(vec![
-                        user.id,
-                        hops,
+                        user_id_str,
                         user.short_name,
                         user.long_name,
                         rf_str,
+                        hops,
+                        neigh_str,
                         distance_str,
                         station_lat_str,
                         station_lon_str,
@@ -371,10 +416,11 @@ impl Widget for NodesTab {
 
             let header = Row::new(vec![
                 "ID",
-                "Hops",
                 "Short",
                 "Long",
                 "RF Details",
+                "Hops",
+                "Neighbors",
                 "Distance",
                 "Latitude",
                 "Longitude",

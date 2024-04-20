@@ -201,7 +201,7 @@ impl App {
                                 ncn.last_seen = util::get_secs();
                                 self.nodes_tab.node_list.insert(id, ncn);
                             } else {
-                                let mut cn = ComprehensiveNode::default();
+                                let mut cn = ComprehensiveNode::with_id(id);
                                 cn.node_info.user = Some(user);
                                 cn.last_seen = util::get_secs();
                                 self.nodes_tab.node_list.insert(id, cn);
