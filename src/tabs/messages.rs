@@ -42,7 +42,6 @@ impl MessagesTab {
         self.table_state.select(Some(i));
     }
     pub fn prev_page(&mut self) {
-        info!("page_size = {}", self.page_size);
         let i = match self.table_state.selected() {
             Some(i) => {
                 if i <= self.page_size as usize {
@@ -70,11 +69,10 @@ impl MessagesTab {
         self.table_state.select(Some(i));
     }
     pub fn next_page(&mut self) {
-        info!("page_size = {}", self.page_size);
         let i = match self.table_state.selected() {
             Some(i) => {
                 if i >= self.messages.len().saturating_sub(self.page_size as usize) {
-                    self.messages.len() - 1
+                    self.messages.len().saturating_sub(1)
                 } else {
                     i.saturating_add(self.page_size as usize)
                 }

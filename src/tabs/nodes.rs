@@ -298,7 +298,6 @@ impl NodesTab {
         self.table_state.select(Some(i));
     }
     pub fn prev_page(&mut self) {
-        info!("page_size = {}", self.page_size);
         let i = match self.table_state.selected() {
             Some(i) => {
                 if i <= self.page_size as usize {
