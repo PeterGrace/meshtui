@@ -40,7 +40,7 @@ pub struct App {
     pub input: String,
     pub connection: Connection,
     pub user_prefs: Preferences,
-    pub send_to_radio: Option<tokio::sync::mpsc::Sender<IPCMessage>>,
+    pub send_to_radio: Option<mpsc::Sender<IPCMessage>>,
 }
 
 impl App {
@@ -128,7 +128,8 @@ impl App {
         while self.is_running() {
             // execute runs, if needed
             match self.tab {
-                MenuTabs::Nodes => self.nodes_tab.run(),
+                MenuTabs::Nodes => self.nodes_tab.run().await,
+                MenuTabs::Messages => self.messages_tab.run().await,
                 _ => {}
             }
 
@@ -146,6 +147,8 @@ impl App {
                             Char('l') | Right => self.next_tab(),
                             Char('k') | Up => self.prev(),
                             Char('j') | Down => self.next(),
+                            PageUp => self.prev_page(),
+                            PageDown => self.next_page(),
                             KeyCode::Enter => self.enter_key().await,
                             _ => {}
                         },
@@ -192,7 +195,7 @@ impl App {
                                     .node_list
                                     .insert(envelope.clone().source.unwrap().num, ncn);
                             }
-                            self.messages_tab.messages.push(envelope);
+                            self.messages_tab.messages.push_back(envelope);
                         }
                         PacketResponse::UserUpdate(id, user) => {
                             if let Some(cn) = self.nodes_tab.node_list.get(&id) {
@@ -257,12 +260,6 @@ impl App {
     fn is_running(&self) -> bool {
         self.mode != Mode::Exiting
     }
-    fn handle_event(&mut self, event: Event) -> bool {
-        true
-    }
-    fn update(&mut self, action: bool) -> Option<bool> {
-        None
-    }
     fn prev_tab(&mut self) {
         self.tab = self.tab.prev();
     }
@@ -279,11 +276,29 @@ impl App {
             _ => {}
         }
     }
+    fn prev_page(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.prev_page(),
+            MenuTabs::Messages => self.messages_tab.prev_page(),
+            MenuTabs::Config => self.config_tab.prev_row(),
+            MenuTabs::About => self.about_tab.prev_row(),
+            _ => {}
+        }
+    }
 
     fn next(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.next_row(),
             MenuTabs::Messages => self.messages_tab.next_row(),
+            MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::About => self.about_tab.next_row(),
+            _ => {}
+        }
+    }
+    fn next_page(&mut self) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.next_page(),
+            MenuTabs::Messages => self.messages_tab.next_page(),
             MenuTabs::Config => self.config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
             _ => {}

@@ -207,6 +207,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "circular-buffer"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da987586004ae7c43b7df5e3f7693775068522e1086f8d9b2d74c778a0f43313"
+
+[[package]]
 name = "clap"
 version = "4.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -726,6 +732,7 @@ name = "meshtui"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "circular-buffer",
  "clap",
  "color-eyre",
  "crossterm",

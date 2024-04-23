@@ -21,6 +21,7 @@ use app::App;
 use lazy_static::lazy_static;
 use std::env::VarError;
 use std::process;
+use std::sync::atomic;
 use tokio::io;
 use tokio::sync::RwLock;
 use tracing_subscriber::filter::EnvFilter;
@@ -29,6 +30,7 @@ use tui_logger::TuiTracingSubscriberLayer;
 
 lazy_static! {
     static ref PREFERENCES: RwLock<Preferences> = RwLock::new(Preferences::default());
+    static ref PAGE_SIZE: RwLock<u16> = RwLock::new(0_u16);
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {

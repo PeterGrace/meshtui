@@ -1,18 +1,18 @@
 use crate::app::{Mode, Preferences};
-use crate::{consts, util};
+use crate::consts::GPS_PRECISION_FACTOR;
 use crate::theme::THEME;
 use crate::util::get_secs;
 use crate::PREFERENCES;
+use crate::{consts, util, PAGE_SIZE};
 use geoutils::Location;
 use itertools::Itertools;
+use meshtastic::protobufs::config::device_config::Role;
 use meshtastic::protobufs::*;
 use pretty_duration::pretty_duration;
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
-use meshtastic::protobufs::config::device_config::Role;
-use crate::consts::GPS_PRECISION_FACTOR;
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum DisplayMode {
@@ -33,6 +33,7 @@ pub struct NodesTab {
     prefs: Preferences,
     pub display_mode: DisplayMode,
     pub selected_node: ComprehensiveNode,
+    pub page_size: u16,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -50,16 +51,16 @@ impl ComprehensiveNode {
         let mut cn = ComprehensiveNode::default();
         cn.id = id;
         cn
-
     }
 }
 
 impl NodesTab {
-    pub fn run(&mut self) {
+    pub async fn run(&mut self) {
         if self.prefs.initialized.len() == 0 {
             let prefs = PREFERENCES.try_read().unwrap();
             self.prefs = prefs.clone();
         }
+        self.page_size = *PAGE_SIZE.read().await;
 
         // We sort by last heard, in reverse order, so that the most recent update is at the top.
         self.table_contents = self.node_list.values().cloned().collect();
@@ -99,7 +100,6 @@ impl NodesTab {
         rows.push(Row::new(vec![
             "Node id (num)".to_string(),
             cn.id.to_string(),
-
         ]));
 
         //region User-struct display fields
@@ -108,51 +108,69 @@ impl NodesTab {
 
             rows.push(Row::new(vec!["Id".to_string(), user.id.clone()]));
 
+            rows.push(Row::new(vec![
+                "Name (Short)".to_string(),
+                format!("{} ({})", user.long_name, user.short_name),
+            ]));
 
-            rows.push(Row::new(vec!["Name (Short)".to_string(),
-                                    format!("{} ({})", user.long_name, user.short_name)]));
-
-            rows.push(Row::new(vec!["Hardware Model".to_string(),
-                                    format!("{:?}", user.hw_model())]));
-            rows.push(Row::new(vec!["Licensed Operator".to_string(),
-                                    format!("{}", user.is_licensed)]));
-            rows.push(Row::new(vec!["Device Role".to_string(),
-                                    format!("{:?}", user.role())]));
+            rows.push(Row::new(vec![
+                "Hardware Model".to_string(),
+                format!("{:?}", user.hw_model()),
+            ]));
+            rows.push(Row::new(vec![
+                "Licensed Operator".to_string(),
+                format!("{}", user.is_licensed),
+            ]));
+            rows.push(Row::new(vec![
+                "Device Role".to_string(),
+                format!("{:?}", user.role()),
+            ]));
         } else {
             rows.push(Row::new(vec![
                 "Id* (implied)".to_string(),
-                format!("*{:x}",cn.id)
+                format!("*{:x}", cn.id),
             ]));
-
         }
         //endregion
 
-        rows.push(Row::new(vec!["Last RF SNR/RSSI".to_string(),
-                                format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi)]));
+        rows.push(Row::new(vec![
+            "Last RF SNR/RSSI".to_string(),
+            format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi),
+        ]));
 
         //region DeviceMetrics-struct display fields
         if let Some(device_metrics) = cn.node_info.device_metrics {
             if device_metrics.air_util_tx > 0.0 {
-                rows.push(Row::new(vec!["Air/TX Utilization".to_string(),
-                                        format!("{:.2}%", device_metrics.air_util_tx)]));
+                rows.push(Row::new(vec![
+                    "Air/TX Utilization".to_string(),
+                    format!("{:.2}%", device_metrics.air_util_tx),
+                ]));
             }
             if device_metrics.channel_utilization > 0.0 {
-                rows.push(Row::new(vec!["Channel Utilization".to_string(),
-                                        format!("{:.2}%", device_metrics.channel_utilization)]));
+                rows.push(Row::new(vec![
+                    "Channel Utilization".to_string(),
+                    format!("{:.2}%", device_metrics.channel_utilization),
+                ]));
             }
 
             if device_metrics.voltage > 0.0 {
-                rows.push(Row::new(vec!["Device Voltage".to_string(),
-                                        format!("{:.2}V", device_metrics.voltage)]));
+                rows.push(Row::new(vec![
+                    "Device Voltage".to_string(),
+                    format!("{:.2}V", device_metrics.voltage),
+                ]));
             }
             match device_metrics.battery_level {
                 1..=100 => {
-                    rows.push(Row::new(vec!["Battery Level".to_string(),
-                                            format!("{:.2}%", device_metrics.battery_level)]));
+                    rows.push(Row::new(vec![
+                        "Battery Level".to_string(),
+                        format!("{:.2}%", device_metrics.battery_level),
+                    ]));
                 }
                 101 => {
-                    rows.push(Row::new(vec!["Battery Level".to_string(),
-                                            format!("Plugged-in")]));
+                    rows.push(Row::new(vec![
+                        "Battery Level".to_string(),
+                        format!("Plugged-in"),
+                    ]));
                 }
                 _ => {}
             }
@@ -162,16 +180,25 @@ impl NodesTab {
         //region Position-struct display fields
         if let Some(position) = cn.node_info.position {
             if position.latitude_i != 0 {
-                rows.push(Row::new(vec!["Latitude".to_string(),
-                                        format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR))]));
+                rows.push(Row::new(vec![
+                    "Latitude".to_string(),
+                    format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR)),
+                ]));
             }
             if position.longitude_i != 0 {
-                rows.push(Row::new(vec!["Longitude".to_string(),
-                                        format!("{:.2}", position.longitude_i as f32 * (GPS_PRECISION_FACTOR))]));
+                rows.push(Row::new(vec![
+                    "Longitude".to_string(),
+                    format!(
+                        "{:.2}",
+                        position.longitude_i as f32 * (GPS_PRECISION_FACTOR)
+                    ),
+                ]));
             }
             if position.altitude > 0 {
-                rows.push(Row::new(vec!["Altitude".to_string(),
-                                        format!("{}m", position.altitude)]));
+                rows.push(Row::new(vec![
+                    "Altitude".to_string(),
+                    format!("{}m", position.altitude),
+                ]));
             }
         }
         //endregion
@@ -180,21 +207,32 @@ impl NodesTab {
         if cn.neighbors.len() > 0 {
             rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
             for (i, item) in cn.neighbors.iter().enumerate() {
-                let id = self.node_list.get(&item.node_id).unwrap().clone().node_info.user.unwrap().id;
+                let id = self
+                    .node_list
+                    .get(&item.node_id)
+                    .unwrap()
+                    .clone()
+                    .node_info
+                    .user
+                    .unwrap()
+                    .id;
                 let snr = format!("{:.2}dB", item.snr);
                 let mut last_seen: String = "Unknown".to_string();
                 if item.last_rx_time > 0 {
-                    last_seen = pretty_duration(&Duration::from_secs(util::get_secs().saturating_sub(item.last_rx_time as u64)), None);
+                    last_seen = pretty_duration(
+                        &Duration::from_secs(
+                            util::get_secs().saturating_sub(item.last_rx_time as u64),
+                        ),
+                        None,
+                    );
                 }
                 rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
             }
         }
         //endregion
 
-        Table::new(rows, constraints)
-            .highlight_style(THEME.tabs_selected)
+        Table::new(rows, constraints).highlight_style(THEME.tabs_selected)
     }
-
 
     pub fn escape(&mut self) -> Mode {
         match self.display_mode {
@@ -220,7 +258,7 @@ impl NodesTab {
         let i = match self.table_state.selected() {
             Some(i) => {
                 if i <= 0 {
-                    self.table_contents.len() - 1
+                    self.table_contents.len().saturating_sub(1)
                 } else {
                     i.saturating_sub(1)
                 }
@@ -234,7 +272,7 @@ impl NodesTab {
     pub fn next_row(&mut self) {
         let i = match self.table_state.selected() {
             Some(i) => {
-                if i >= self.table_contents.len() - 1 {
+                if i >= self.table_contents.len().saturating_sub(1) {
                     0
                 } else {
                     i.saturating_add(1)
@@ -245,11 +283,51 @@ impl NodesTab {
         self.table_state.select(Some(i));
         self.scrollbar_state = self.scrollbar_state.position(i);
     }
+    pub fn next_page(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i >= self.node_list.len().saturating_sub(self.page_size as usize) {
+                    self.node_list.len() - 1
+                } else {
+                    i.saturating_add(self.page_size as usize)
+                }
+            }
+            None => 0,
+        };
+        debug!("i is {i}");
+        self.table_state.select(Some(i));
+    }
+    pub fn prev_page(&mut self) {
+        info!("page_size = {}", self.page_size);
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i <= self.page_size as usize {
+                    0
+                } else {
+                    i.saturating_sub(self.page_size as usize)
+                }
+            }
+            None => 0,
+        };
+        self.table_state.select(Some(i));
+    }
 }
 
 impl Widget for NodesTab {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
-        // herein lies the ui code for the tab
+        // since this fn is operating on a copy of the messagestab struct, there
+        // were only a few ways I could handle perpetuating the page size for PgUp/PgDn.
+        let mut page_size;
+        {
+            page_size = *PAGE_SIZE.try_read().unwrap();
+        }
+        if page_size != area.height {
+            if let Ok(mut ps) = PAGE_SIZE.try_write() {
+                *ps = area.height;
+            } else {
+                info!("write lock failure on page_size");
+            }
+        }
 
         if self.display_mode == DisplayMode::Detail {
             let popup_block = Block::default()
@@ -267,11 +345,10 @@ impl Widget for NodesTab {
 
             Widget::render(Clear::default(), area, buf);
             Widget::render(popup_block, popup_area, buf);
-            Widget::render(self.get_details_for_node(),
-                           crate::app::centered_rect(popup_area,
-                                                     95,
-                                                     95),
-                           buf,
+            Widget::render(
+                self.get_details_for_node(),
+                crate::app::centered_rect(popup_area, 95, 95),
+                buf,
             );
         } else {
             let node_list_constraints = vec![
@@ -280,7 +357,7 @@ impl Widget for NodesTab {
                 Constraint::Max(25),    // LongName
                 Constraint::Max(25),    // RF Details
                 Constraint::Max(5),     // Hops
-                Constraint::Max(10),     // Neighbors
+                Constraint::Max(10),    // Neighbors
                 Constraint::Length(12), // Distance
                 Constraint::Length(10), // Latitude
                 Constraint::Length(10), // Longitude
@@ -390,7 +467,7 @@ impl Widget for NodesTab {
                     } else {
                         rf_str = format!("MQTT");
                     }
-                    let neigh_str = format!("{}",cn.neighbors.len());
+                    let neigh_str = format!("{}", cn.neighbors.len());
 
                     // I don't want to blocking read every loop iteration so we'll cheat and set
                     // self.prefs here, avoiding ::new(),::default() adjusting shenanigans.
@@ -430,8 +507,8 @@ impl Widget for NodesTab {
                 "Last Heard NodeInfo",
                 "Last Update",
             ])
-                .set_style(THEME.message_header)
-                .bottom_margin(1);
+            .set_style(THEME.message_header)
+            .bottom_margin(1);
 
             let block = Block::new()
                 .borders(Borders::ALL)
