@@ -20,37 +20,6 @@ pub struct MessagesTab {
 impl MessagesTab {
     pub async fn run(&mut self) {
         self.page_size = *PAGE_SIZE.read().await;
-
-        if self.messages.len() < consts::MAX_MSG_RETENTION {
-            self.messages.push_back(MessageEnvelope {
-                timestamp: util::get_secs() as u32,
-                source: Some(NodeInfo {
-                    num: 0,
-                    user: Some(User {
-                        id: "".to_string(),
-                        long_name: "".to_string(),
-                        short_name: "".to_string(),
-                        macaddr: vec![],
-                        hw_model: 0,
-                        is_licensed: false,
-                        role: 0,
-                    }),
-                    position: None,
-                    snr: 0.0,
-                    last_heard: 0,
-                    device_metrics: None,
-                    channel: 0,
-                    via_mqtt: false,
-                    hops_away: 0,
-                    is_favorite: false,
-                }),
-                destination: Default::default(),
-                channel: Default::default(),
-                message: "scrollbarring".to_string(),
-                rx_rssi: 0,
-                rx_snr: 0.0,
-            });
-        }
     }
     pub fn escape(&mut self) -> Mode {
         Mode::Exiting
