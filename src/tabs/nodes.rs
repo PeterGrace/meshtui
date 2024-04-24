@@ -455,11 +455,11 @@ impl Widget for NodesTab {
 
                     let mut battery_str = "".to_string();
                     match device.battery_level {
-                        1..=99 => {
+                        1..=100 => {
                             battery_str = format!("{:.2}%", device.battery_level);
                         }
-                        100..=101 => {
-                            battery_str = "Full".to_string();
+                        101 => {
+                            battery_str = "Powered".to_string();
                         }
                         _ => {}
                     }
