@@ -449,13 +449,21 @@ impl Widget for NodesTab {
                     };
 
                     let mut voltage_str = "".to_string();
-                    if device.voltage.gt(&0.0) {
-                        let voltage_str = format!("{:.2}V", device.voltage);
-                    }
-                    let mut battery_str = "".to_string();
-                    if device.battery_level.gt(&0) && device.battery_level.le(&100) {
-                        battery_str = format!("{:.2}%", device.battery_level);
+                    if device.voltage > 0.0 {
+                        voltage_str = format!("{:.2}V", device.voltage);
                     };
+
+                    let mut battery_str = "".to_string();
+                    match device.battery_level {
+                        1..=99 => {
+                            battery_str = format!("{:.2}%", device.battery_level);
+                        }
+                        100..=101 => {
+                            battery_str = "Full".to_string();
+                        }
+                        _ => {}
+                    }
+                    if device.battery_level.gt(&0) && device.battery_level.le(&100) {};
 
                     let mut rf_str = "".to_string();
                     if !cn.node_info.via_mqtt {
