@@ -13,6 +13,10 @@ use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
+use meshtastic::protobufs;
+use meshtastic::protobufs::PortNum::TracerouteApp;
+use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
+use crate::ipc::IPCMessage;
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum DisplayMode {
@@ -44,6 +48,7 @@ pub struct ComprehensiveNode {
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
     pub last_rssi: i32,
+    pub route_list: HashMap<u32, Vec<u32>>
 }
 
 impl ComprehensiveNode {
@@ -83,6 +88,7 @@ impl NodesTab {
         self.table_contents.reverse();
     }
     pub(crate) fn get_details_for_node(&self) -> Table {
+        let me = self.node_list.get(&self.my_node_id).unwrap();
         let cn = self.selected_node.clone();
         let constraints = vec![
             Constraint::Max(20),
@@ -203,9 +209,12 @@ impl NodesTab {
         }
         //endregion
 
+
         //region NeighborApp display fields
         if cn.neighbors.len() > 0 {
+            rows.push(Row::new(vec![""]));
             rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
+            rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
             for (i, item) in cn.neighbors.iter().enumerate() {
                 let id = self
                     .node_list
@@ -230,10 +239,56 @@ impl NodesTab {
             }
         }
         //endregion
+        if let Some(routes) = cn.route_list.get(&me.id) {
+            let rest_of_route = routes.iter().map(|s| format!("!{:x}",&s)).join("->");
+            let whole_route = format!("!{:x}->{}->!{:x}",me.id,&rest_of_route,cn.id);
+            rows.push(Row::new(vec![""]));
+            rows.push(Row::new(vec!["Latest Route:".to_string(), whole_route]));
+
+        }
 
         Table::new(rows, constraints).highlight_style(THEME.tabs_selected)
     }
 
+    pub async fn back_tab(&mut self) {
+        if let Some(index) = self.table_state.selected() {
+            self.selected_node = self.table_contents[index].clone();
+
+            let mesh_packet = MeshPacket {
+                from: 0,
+                to: self.selected_node.id,
+                channel: 0,
+                id: 0,
+                rx_time: 0,
+                rx_snr: 0.0,
+                hop_limit: 0,
+                want_ack: true,
+                priority: 0,
+                rx_rssi: 0,
+                delayed: 0,
+                via_mqtt: true,
+                hop_start: 0,
+                payload_variant: Some(protobufs::mesh_packet::PayloadVariant::Decoded(Data {
+                    portnum: i32::from(TracerouteApp),
+                    payload: vec![],
+                    want_response: true,
+                    dest: 0,
+                    source: 0,
+                    request_id: 0,
+                    reply_id: 0,
+                    emoji: 0,
+                })),
+            };
+            let payload_variant = Some(Packet(mesh_packet));
+            if let Err(e) = util::send_to_radio(IPCMessage::ToRadio(ToRadio { payload_variant }))
+                .await
+            {
+                error!("Tried sending traceroute but failed: {e}");
+            } else {
+                info!("Emitted Traceroute Request to !{:x}",self.selected_node.id);
+            }
+        }
+    }
     pub fn escape(&mut self) -> Mode {
         match self.display_mode {
             DisplayMode::List => Mode::Exiting,

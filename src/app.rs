@@ -13,7 +13,7 @@ use crossterm::event::{KeyCode, MouseEventKind};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::ToRadio;
+use meshtastic::protobufs::{Data, MeshPacket, ToRadio};
 use meshtastic::types::MeshChannel;
 use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
@@ -21,9 +21,13 @@ use ratatui::{
     widgets::{Block, Borders, Tabs},
 };
 use std::io;
+use meshtastic::protobufs;
+use meshtastic::protobufs::PortNum::TracerouteApp;
+use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 use tui_logger::TuiLoggerWidget;
 
@@ -40,7 +44,6 @@ pub struct App {
     pub input: String,
     pub connection: Connection,
     pub user_prefs: Preferences,
-    pub send_to_radio: Option<mpsc::Sender<IPCMessage>>,
 }
 
 impl App {
@@ -117,7 +120,10 @@ impl App {
         let (mut toradio_thread_tx, mut toradio_thread_rx) =
             mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
 
-        self.send_to_radio = Some(toradio_thread_tx.clone());
+        {
+            let mut trm = crate::TO_RADIO_MPSC.write().await;
+            *trm = Some(toradio_thread_tx.clone());
+        }
         let fromradio_tx = fromradio_thread_tx.clone();
         let conn = self.connection.clone();
 
@@ -150,6 +156,7 @@ impl App {
                             PageUp => self.prev_page(),
                             PageDown => self.next_page(),
                             KeyCode::Enter => self.enter_key().await,
+                            KeyCode::BackTab => self.back_tab().await,
                             _ => {}
                         },
                         InputMode::Editing => match press.code {
@@ -232,6 +239,10 @@ impl App {
                             (toradio_thread_tx, toradio_thread_rx) =
                                 mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
                             let fromradio_tx = fromradio_thread_tx.clone();
+                            {
+                                let mut trm = crate::TO_RADIO_MPSC.write().await;
+                                *trm = Some(toradio_thread_tx.clone());
+                            }
                             let conn = self.connection.clone();
                             join_handle = tokio::task::spawn(async move {
                                 meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await
@@ -266,6 +277,15 @@ impl App {
 
     fn next_tab(&mut self) {
         self.tab = self.tab.next();
+    }
+    async fn back_tab(&mut self) {
+         match self.tab {
+             MenuTabs::Nodes => self.nodes_tab.back_tab().await,
+             _ => {}
+        //     MenuTabs::Messages => self.messages_tab.back_tab(),
+        //     MenuTabs::Config => self.config_tab.back_tab(),
+        //     MenuTabs::About => self.about_tab.back_tab(),
+         }
     }
     fn prev(&mut self) {
         match self.tab {
@@ -322,14 +342,8 @@ impl App {
                         rx_rssi: 0,
                         rx_snr: 0.0,
                     };
-                    if let Err(e) = self
-                        .send_to_radio
-                        .clone()
-                        .unwrap()
-                        .send(IPCMessage::ToRadio(message))
-                        .await
-                    {
-                        error!("Tried sending message but failed: {e}");
+                    if let Err(e) = util::send_to_radio(IPCMessage::SendMessage(message)).await {
+                        error!("Unable to send message to node: {e}");
                     }
                 }
                 self.input = "".to_string();
@@ -337,6 +351,7 @@ impl App {
             }
         }
     }
+
     async fn enter_key(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.enter_key(),
@@ -391,6 +406,7 @@ impl App {
     fn reset_cursor(&mut self) {
         self.cursor_position = 0;
     }
+
     fn render_event_log(&self, area: Rect, buf: &mut Buffer) {
         let block = Block::new()
             .borders(Borders::ALL)
@@ -401,6 +417,7 @@ impl App {
 
         TuiLoggerWidget::default().block(block).render(area, buf)
     }
+
     fn render_bottom_bar(area: Rect, buf: &mut Buffer) {
         let keys = [
             ("H/←", "Left"),
@@ -429,6 +446,7 @@ impl App {
             .style((Color::Indexed(236), Color::Indexed(232)))
             .render(area, buf);
     }
+
     pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
         let titles = MenuTabs::iter().map(MenuTabs::title);
         let top_menu = Tabs::new(titles)
@@ -439,6 +457,7 @@ impl App {
             .select(self.tab as usize)
             .render(area, buf);
     }
+
     pub fn render_selected_tab(&self, area: Rect, buf: &mut Buffer) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.clone().render(area, buf),

@@ -23,15 +23,19 @@ use std::env::VarError;
 use std::process;
 use std::sync::atomic;
 use tokio::io;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::prelude::*;
 use tui_logger::TuiTracingSubscriberLayer;
+use crate::ipc::IPCMessage;
 
 lazy_static! {
     static ref PREFERENCES: RwLock<Preferences> = RwLock::new(Preferences::default());
     static ref PAGE_SIZE: RwLock<u16> = RwLock::new(0_u16);
+    static ref TO_RADIO_MPSC: RwLock<Option<Sender<IPCMessage>>> = RwLock::new(None);
 }
+
 #[tokio::main]
 async fn main() -> io::Result<()> {
     if let Err(e) = std::env::var("RUST_LOG") {

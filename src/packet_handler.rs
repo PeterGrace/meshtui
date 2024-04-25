@@ -2,10 +2,7 @@ use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::util;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{
-    from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position,
-    Routing, User,
-};
+use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery};
 use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
@@ -35,8 +32,8 @@ pub async fn process_packet(
         if let Some(some_fr) = fr.payload_variant {
             match some_fr {
                 from_radio::PayloadVariant::Packet(pa) => {
-                    if let Some(payload) = pa.payload_variant {
-                        match payload {
+                    if let Some(payload) = pa.clone().payload_variant {
+                        match payload.clone() {
                             mesh_packet::PayloadVariant::Decoded(de) => {
                                 match de.portnum() {
                                     PortNum::PositionApp => {
@@ -168,7 +165,10 @@ pub async fn process_packet(
                                                 }
                                                 routing::Variant::ErrorReason(er) => match er {
                                                     0 => {
-                                                        info!("Routing Message: implicit ack on our outbound message id {} (a remote node rebroadcasted it)",de.request_id);
+                                                        let from_id = pa.clone().from;
+                                                        let to_id = pa.clone().to;
+
+                                                        debug!("Routing Message: Outbound message id {} successfully transmitted" ,de.request_id);
                                                     }
                                                     _ => {
                                                         info!("Routing Error: message trace id {} has errorcode {}", de.request_id, er);
@@ -178,7 +178,21 @@ pub async fn process_packet(
                                         }
                                     }
                                     PortNum::TracerouteApp => {
-                                        info!("A Traceroute packet was received");
+                                        let val_resp = RouteDiscovery::decode(de.payload.as_slice());
+                                        if let Ok(route) = val_resp {
+                                            let from_id = pa.clone().from;
+                                            let to_id = pa.clone().to;
+                                            let mut cn = match node_list.get(&from_id) {
+                                                None => {
+                                                    panic!("{:#?}", pa.clone());
+                                                    return None;
+                                                }
+                                                Some(n) => n.clone(),
+                                            };
+                                            cn.route_list.insert(to_id, route.clone().route);
+                                            info!("updating route table to {:#?} for !{:x}->!{:x}",route.route,from_id,to_id);
+                                            return Some(PacketResponse::NodeUpdate(cn.id, cn));
+                                        }
                                     }
                                     PortNum::ReplyApp => {
                                         info!("We were just pinged.");

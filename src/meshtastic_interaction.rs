@@ -22,10 +22,12 @@ pub enum DeviceUpdateError {
     EventDispatchFailure(String),
     NotificationDispatchFailure(String),
 }
+
 #[derive(Default)]
 struct MyPacketRouter {
     _source_node_id: NodeId,
 }
+
 impl MyPacketRouter {
     fn new(node_id: u32) -> Self {
         MyPacketRouter {
@@ -33,6 +35,7 @@ impl MyPacketRouter {
         }
     }
 }
+
 impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
     fn handle_packet_from_radio(
         &mut self,
@@ -97,26 +100,34 @@ pub(crate) async fn meshtastic_loop(
         }
         match rx.try_recv() {
             Ok(inbound) => {
-                if let IPCMessage::ToRadio(message) = inbound {
-                    if let Err(e) = _stream_api
-                        .send_text(
-                            &mut packet_router,
-                            message.message,
-                            message.destination,
-                            true,
-                            message.channel,
-                        )
-                        .await
-                    {
-                        error!("We tried to send a message but... nope: {e}");
+                match inbound {
+                    IPCMessage::SendMessage(message) => {
+                        if let Err(e) = _stream_api
+                            .send_text(
+                                &mut packet_router,
+                                message.message,
+                                message.destination,
+                                true,
+                                message.channel,
+                            )
+                            .await
+                        {
+                            error!("We tried to send a message but... nope: {e}");
+                        }
                     }
-                } else {
-                    warn!("Unknown ipc message sent into comms thread.");
+                    IPCMessage::ToRadio(tr) => {
+                        if let Err(e) = _stream_api.send_to_radio_packet(tr.payload_variant).await {
+                            error!("We tried to send a ToRadio message directly but errored: {e}");
+                        }
+                    }
+                    _ => {
+                        warn!("Unknown ipc message sent into comms thread.");
+                    }
                 }
             }
-            Err(_) => {}
+                Err(_) => {}
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        Ok(())
     }
-    Ok(())
-}
