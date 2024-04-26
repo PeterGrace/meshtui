@@ -16,6 +16,7 @@ use std::time::Duration;
 use meshtastic::protobufs;
 use meshtastic::protobufs::PortNum::TracerouteApp;
 use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
+use tui_logger::set_level_for_target;
 use crate::ipc::IPCMessage;
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -48,7 +49,7 @@ pub struct ComprehensiveNode {
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
     pub last_rssi: i32,
-    pub route_list: HashMap<u32, Vec<u32>>
+    pub route_list: HashMap<u32, Vec<u32>>,
 }
 
 impl ComprehensiveNode {
@@ -87,16 +88,50 @@ impl NodesTab {
             .sort_by(|a, b| a.last_seen.cmp(&b.last_seen));
         self.table_contents.reverse();
     }
-    pub(crate) fn get_details_for_node(&self) -> Table {
+    pub(crate) fn get_details_for_node(&self, area: Rect, buf: &mut Buffer) {
         let me = self.node_list.get(&self.my_node_id).unwrap();
         let cn = self.selected_node.clone();
-        let constraints = vec![
+
+        //region layout and block pre-game
+        let left_side_constraints = vec![
             Constraint::Max(20),
             Constraint::Min(0),
+        ];
+        let right_top_constraints = vec![
             Constraint::Min(0),
-            Constraint::Min(0),
+            Constraint::Min(10),
+            Constraint::Min(10),
+            Constraint::Min(25),
+        ];
+        let right_bottom_constraints = vec![
+            Constraint::Max(13),
             Constraint::Min(0),
         ];
+
+
+        let default_inner_block = Block::default()
+            .borders(Borders::ALL)
+            .title_alignment(Alignment::Center)
+            .border_set(symbols::border::ROUNDED)
+            .style(THEME.middle);
+        let left_block = default_inner_block.clone().title("Basics");
+        let right_top_block = default_inner_block.clone().title("Neighbors");
+        let right_bottom_block = default_inner_block.clone().title("Traceroute");
+
+        let [left_side, right_side] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(crate::FIFTY_FIFTY.iter())
+            .margin(1)
+            .areas(area);
+
+        let [right_top_layout, right_bottom_layout] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(crate::FIFTY_FIFTY.iter())
+            .areas(right_side);
+        //endregion
+
+
+        //region left-side fields
         let mut rows: Vec<Row> = vec![];
 
         if cn.node_info.via_mqtt {
@@ -210,11 +245,22 @@ impl NodesTab {
         //endregion
 
 
+        Widget::render(
+            Table::new(
+                rows,
+                left_side_constraints,
+            )
+                .highlight_style(THEME.tabs_selected)
+                .block(left_block), left_side, buf);
+//endregion
+
+        //region right-top
+        let mut right_top_rows: Vec<Row> = vec![];
         //region NeighborApp display fields
         if cn.neighbors.len() > 0 {
-            rows.push(Row::new(vec![""]));
-            rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
-            rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
+            right_top_rows.push(Row::new(vec![""]));
+            right_top_rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
+            right_top_rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
             for (i, item) in cn.neighbors.iter().enumerate() {
                 let id = self
                     .node_list
@@ -235,19 +281,35 @@ impl NodesTab {
                         None,
                     );
                 }
-                rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
+                right_top_rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
             }
         }
+
+        Widget::render(
+            Table::new(
+                right_top_rows,
+                right_top_constraints,
+            )
+                .highlight_style(THEME.tabs_selected)
+                .block(right_top_block), right_top_layout, buf);
         //endregion
+
+        //region traceroute display
+        let mut right_bottom_rows: Vec<Row> = vec![];
         if let Some(routes) = cn.route_list.get(&me.id) {
-            let rest_of_route = routes.iter().map(|s| format!("!{:x}",&s)).join("->");
-            let whole_route = format!("!{:x}->{}->!{:x}",me.id,&rest_of_route,cn.id);
-            rows.push(Row::new(vec![""]));
-            rows.push(Row::new(vec!["Latest Route:".to_string(), whole_route]));
+            let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join("->");
+            let whole_route = format!("!{:x}->{}->!{:x}", me.id, &rest_of_route, cn.id);
+            right_bottom_rows.push(Row::new(vec!["Latest Route:".to_string(), whole_route]));
+        };
 
-        }
-
-        Table::new(rows, constraints).highlight_style(THEME.tabs_selected)
+        Widget::render(
+            Table::new(
+                right_bottom_rows,
+                right_bottom_constraints,
+            )
+                .highlight_style(THEME.tabs_selected)
+                .block(right_bottom_block), right_bottom_layout, buf);
+        //endregion
     }
 
     pub async fn back_tab(&mut self) {
@@ -389,21 +451,18 @@ impl Widget for NodesTab {
                 .borders(Borders::ALL)
                 .title_alignment(Alignment::Center)
                 .border_set(symbols::border::DOUBLE)
-                .style(THEME.middle);
-            let popup_area = crate::app::centered_rect(area, 85, 65);
-            let popup_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .margin(1)
-                .constraints([Constraint::Percentage(50)])
-                .split(popup_area);
+                .border_style(THEME.popup_window);
 
+
+            //let popup_area = crate::app::centered_rect(area, 100, 61);
             Widget::render(Clear::default(), area, buf);
-            Widget::render(popup_block, popup_area, buf);
-            Widget::render(
-                self.get_details_for_node(),
-                crate::app::centered_rect(popup_area, 95, 95),
-                buf,
-            );
+            Widget::render(popup_block, area, buf);
+            self.get_details_for_node(area, buf);
+            // Widget::render(
+            //     self.get_details_for_node(sub_area),
+            //     sub_area,
+            //     buf,
+            // );
         } else {
             let node_list_constraints = vec![
                 Constraint::Max(10),    // ID
@@ -569,8 +628,8 @@ impl Widget for NodesTab {
                 "Last Heard NodeInfo",
                 "Last Update",
             ])
-            .set_style(THEME.message_header)
-            .bottom_margin(1);
+                .set_style(THEME.message_header)
+                .bottom_margin(1);
 
             let block = Block::new()
                 .borders(Borders::ALL)

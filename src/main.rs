@@ -29,11 +29,13 @@ use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::prelude::*;
 use tui_logger::TuiTracingSubscriberLayer;
 use crate::ipc::IPCMessage;
+use ratatui::prelude::*;
 
 lazy_static! {
     static ref PREFERENCES: RwLock<Preferences> = RwLock::new(Preferences::default());
     static ref PAGE_SIZE: RwLock<u16> = RwLock::new(0_u16);
     static ref TO_RADIO_MPSC: RwLock<Option<Sender<IPCMessage>>> = RwLock::new(None);
+    static ref FIFTY_FIFTY: Vec<Constraint> = vec![Constraint::Percentage(50),Constraint::Percentage(50)];
 }
 
 #[tokio::main]
