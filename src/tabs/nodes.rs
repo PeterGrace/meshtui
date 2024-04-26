@@ -297,9 +297,16 @@ impl NodesTab {
         //region traceroute display
         let mut right_bottom_rows: Vec<Row> = vec![];
         if let Some(routes) = cn.route_list.get(&me.id) {
-            let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join("->");
-            let whole_route = format!("!{:x}->{}->!{:x}", me.id, &rest_of_route, cn.id);
-            right_bottom_rows.push(Row::new(vec!["Latest Route:".to_string(), whole_route]));
+            let mut whole_route: String = "Unknown".to_string();
+
+            if routes.len() == 0 {
+                whole_route = format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id);
+            } else {
+                let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join("->");
+                whole_route = format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id);
+            }
+            right_bottom_rows.push(Row::new(vec!["Latest Route:", ""]));
+            right_bottom_rows.push(Row::new(vec!["".to_string(), whole_route]));
         };
 
         Widget::render(
