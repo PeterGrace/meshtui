@@ -13,7 +13,7 @@ mod theme;
 pub mod tui;
 mod util;
 
-use crate::app::Connection;
+use crate::app::{Connection, DeviceConfiguration};
 use crate::app::Preferences;
 use crate::clap::CliArgs;
 use ::clap::Parser;
@@ -36,6 +36,7 @@ lazy_static! {
     static ref PAGE_SIZE: RwLock<u16> = RwLock::new(0_u16);
     static ref TO_RADIO_MPSC: RwLock<Option<Sender<IPCMessage>>> = RwLock::new(None);
     static ref FIFTY_FIFTY: Vec<Constraint> = vec![Constraint::Percentage(50),Constraint::Percentage(50)];
+    static ref DEVICE_CONFIG: RwLock<Option<DeviceConfiguration>> = RwLock::new(None);
 }
 
 #[tokio::main]

@@ -22,6 +22,7 @@ use ratatui::{
 };
 use std::io;
 use meshtastic::protobufs;
+use meshtastic::protobufs::config::*;
 use meshtastic::protobufs::PortNum::TracerouteApp;
 use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
@@ -111,7 +112,6 @@ impl App {
             MenuTabs::Messages => self.messages_tab.function_key(num),
             MenuTabs::Config => self.config_tab.function_key(num),
             _ => {}
-
         }
     }
 
@@ -145,6 +145,7 @@ impl App {
             match self.tab {
                 MenuTabs::Nodes => self.nodes_tab.run().await,
                 MenuTabs::Messages => self.messages_tab.run().await,
+                MenuTabs::Config => self.config_tab.run().await,
                 _ => {}
             }
 
@@ -158,14 +159,15 @@ impl App {
                     match self.input_mode {
                         InputMode::Normal => match press.code {
                             Char('q') | Esc => self.escape(),
-                            Char('h') | Left => self.prev_tab(),
-                            Char('l') | Right => self.next_tab(),
+                            Char('h') | Left => self.left(),
+                            Char('l') | Right => self.right(),
                             Char('k') | Up => self.prev(),
                             Char('j') | Down => self.next(),
                             PageUp => self.prev_page(),
                             PageDown => self.next_page(),
                             KeyCode::Enter => self.enter_key().await,
-                            KeyCode::BackTab => self.back_tab().await,
+                            KeyCode::BackTab => self.prev_tab(),
+                            KeyCode::Tab => self.next_tab(),
                             KeyCode::F(n) => self.function_key(n),
                             _ => {}
                         },
@@ -288,14 +290,26 @@ impl App {
     fn next_tab(&mut self) {
         self.tab = self.tab.next();
     }
+    fn left(&mut self) {
+        match self.tab {
+            MenuTabs::Config => self.config_tab.left(),
+            _ => {}
+        }
+    }
+    fn right(&mut self) {
+        match self.tab {
+            MenuTabs::Config => self.config_tab.right(),
+            _ => {}
+        }
+    }
     async fn back_tab(&mut self) {
-         match self.tab {
-             MenuTabs::Nodes => self.nodes_tab.back_tab().await,
-             _ => {}
-        //     MenuTabs::Messages => self.messages_tab.back_tab(),
-        //     MenuTabs::Config => self.config_tab.back_tab(),
-        //     MenuTabs::About => self.about_tab.back_tab(),
-         }
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.back_tab().await,
+            _ => {}
+            //     MenuTabs::Messages => self.messages_tab.back_tab(),
+            //     MenuTabs::Config => self.config_tab.back_tab(),
+            //     MenuTabs::About => self.about_tab.back_tab(),
+        }
     }
     fn prev(&mut self) {
         match self.tab {
@@ -560,4 +574,16 @@ pub(crate) fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct DeviceConfiguration {
+    pub device: DeviceConfig,
+    pub bluetooth: BluetoothConfig,
+    pub display: DisplayConfig,
+    pub lora: LoRaConfig,
+    pub network: NetworkConfig,
+    pub position: PositionConfig,
+    pub power: PowerConfig,
+    pub last_update: u64
 }

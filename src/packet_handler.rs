@@ -1,11 +1,14 @@
 use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
-use crate::util;
+use crate::{DEVICE_CONFIG, util};
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery};
+use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery, Config};
 use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
+use meshtastic::protobufs::config::{DeviceConfig, PayloadVariant};
+use crate::app::DeviceConfiguration;
+use crate::util::get_secs;
 
 pub(crate) enum PacketResponse {
     NodeUpdate(u32, ComprehensiveNode),
@@ -13,6 +16,7 @@ pub(crate) enum PacketResponse {
     InboundMessage(MessageEnvelope),
     OurAddress(u32),
 }
+
 #[derive(Debug, Clone)]
 pub struct MessageEnvelope {
     pub(crate) timestamp: u32,
@@ -64,7 +68,7 @@ pub async fn process_packet(
                                         let data = meshtastic::protobufs::Telemetry::decode(
                                             de.payload.as_slice(),
                                         )
-                                        .unwrap();
+                                            .unwrap();
                                         if let Some(v) = data.variant {
                                             match v {
                                                 telemetry::Variant::DeviceMetrics(dm) => {
@@ -101,8 +105,8 @@ pub async fn process_packet(
                                                 _ => {
                                                     return None;
                                                 } // Variant::EnvironmentMetrics(_) => {}
-                                                  // Variant::AirQualityMetrics(_) => {}
-                                                  // Variant::PowerMetrics(_) => {}
+                                                // Variant::AirQualityMetrics(_) => {}
+                                                // Variant::PowerMetrics(_) => {}
                                             }
                                         }
                                         return None;
@@ -248,11 +252,11 @@ pub async fn process_packet(
                                         panic!("{:#?}", de);
                                         return None;
                                     } // PortNum::AdminApp => {}
-                                      // PortNum::WaypointApp => {}
+                                    // PortNum::WaypointApp => {}
 
-                                      // PortNum::PaxcounterApp => {}
-                                      // PortNum::StoreForwardApp => {}
-                                      // PortNum::RangeTestApp => {}
+                                    // PortNum::PaxcounterApp => {}
+                                    // PortNum::StoreForwardApp => {}
+                                    // PortNum::RangeTestApp => {}
                                 }
                             }
                             mesh_packet::PayloadVariant::Encrypted(_) => {
@@ -281,18 +285,42 @@ pub async fn process_packet(
 
                     return Some(PacketResponse::NodeUpdate(ni.num, cn));
                 }
+                from_radio::PayloadVariant::Config(cfg) => {
+                    info!("Receiving config from device.");
+                    match cfg.payload_variant {
+                        None => {}
+                        Some(s) => {
+                            let mut f = DEVICE_CONFIG.write().await;
+                            if f.is_none() {
+                                *f = Some(DeviceConfiguration::default());
+                            }
+                            let mut devcfg = f.clone().unwrap();
+                            match s {
+                                PayloadVariant::Device(d) => devcfg.device = d,
+                                PayloadVariant::Position(p) => devcfg.position = p,
+                                PayloadVariant::Power(p) => devcfg.power = p,
+                                PayloadVariant::Network(n) => devcfg.network = n,
+                                PayloadVariant::Display(d) => devcfg.display = d,
+                                PayloadVariant::Lora(l) => devcfg.lora = l,
+                                PayloadVariant::Bluetooth(b) => devcfg.bluetooth = b
+                            }
+                            devcfg.last_update = get_secs();
+                            *f = Some(devcfg);
+                        }
+                    }
+                }
                 _ => {
                     return None;
                 } // from_radio::PayloadVariant::Config(_) => {}
-                  // from_radio::PayloadVariant::LogRecord(_) => {}
-                  // from_radio::PayloadVariant::ConfigCompleteId(_) => {}
-                  // from_radio::PayloadVariant::Rebooted(_) => {}
-                  // from_radio::PayloadVariant::ModuleConfig(_) => {}
-                  // from_radio::PayloadVariant::Channel(_) => {}
-                  // from_radio::PayloadVariant::QueueStatus(_) => {}
-                  // from_radio::PayloadVariant::XmodemPacket(_) => {}
-                  // from_radio::PayloadVariant::Metadata(_) => {}
-                  // from_radio::PayloadVariant::MqttClientProxyMessage(_) => {}
+                // from_radio::PayloadVariant::LogRecord(_) => {}
+                // from_radio::PayloadVariant::ConfigCompleteId(_) => {}
+                // from_radio::PayloadVariant::Rebooted(_) => {}
+                // from_radio::PayloadVariant::ModuleConfig(_) => {}
+                // from_radio::PayloadVariant::Channel(_) => {}
+                // from_radio::PayloadVariant::QueueStatus(_) => {}
+                // from_radio::PayloadVariant::XmodemPacket(_) => {}
+                // from_radio::PayloadVariant::Metadata(_) => {}
+                // from_radio::PayloadVariant::MqttClientProxyMessage(_) => {}
             }
         }
         return None;

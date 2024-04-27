@@ -53,6 +53,7 @@ pub struct ComprehensiveNode {
     pub route_list: HashMap<u32, Vec<u32>>,
 }
 
+
 impl ComprehensiveNode {
     pub fn with_id(id: u32) -> Self {
         let mut cn = ComprehensiveNode::default();
