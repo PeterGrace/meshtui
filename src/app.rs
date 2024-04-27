@@ -105,6 +105,15 @@ impl App {
             _ => self.mode = Mode::Exiting,
         }
     }
+    fn function_key(&mut self, num: u8) {
+        match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.function_key(num),
+            MenuTabs::Messages => self.messages_tab.function_key(num),
+            MenuTabs::Config => self.config_tab.function_key(num),
+            _ => {}
+
+        }
+    }
 
     pub async fn run(&mut self) -> Result<()> {
         self.chain_hook();
@@ -157,6 +166,7 @@ impl App {
                             PageDown => self.next_page(),
                             KeyCode::Enter => self.enter_key().await,
                             KeyCode::BackTab => self.back_tab().await,
+                            KeyCode::F(n) => self.function_key(n),
                             _ => {}
                         },
                         InputMode::Editing => match press.code {

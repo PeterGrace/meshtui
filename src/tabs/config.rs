@@ -19,6 +19,12 @@ impl ConfigTab {
     pub fn next_row(&mut self) {
         self.row_index = self.row_index.saturating_add(1);
     }
+    pub fn function_key(&mut self, num: u8) {
+        match num {
+            _ => {}
+        }
+    }
+
 }
 
 impl Widget for ConfigTab {

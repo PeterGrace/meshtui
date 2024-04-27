@@ -82,6 +82,12 @@ impl MessagesTab {
         debug!("i is {i}");
         self.table_state.select(Some(i));
     }
+    pub fn function_key(&mut self, num: u8) {
+        match num {
+            _ => {}
+        }
+    }
+
 }
 
 impl Widget for MessagesTab {

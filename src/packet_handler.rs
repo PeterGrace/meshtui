@@ -151,7 +151,13 @@ pub async fn process_packet(
                                             "Received node info update for {} ({})",
                                             data.id, pa.from
                                         );
-                                        return Some(PacketResponse::UserUpdate(pa.from, data));
+                                        let nid = u32::from_str_radix(data.id.clone().trim_start_matches("!"), 16).unwrap_or(0_u32);
+                                        if nid == 0 {
+                                            error!("Received a node update but the node string ({}) is not parseable hexadecimal",data.id.clone());
+                                            return None;
+                                        }
+
+                                        return Some(PacketResponse::UserUpdate(nid, data));
                                     }
                                     PortNum::RoutingApp => {
                                         let data = Routing::decode(de.payload.as_slice()).unwrap();
