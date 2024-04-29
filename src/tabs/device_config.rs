@@ -3,8 +3,10 @@ use crate::theme::THEME;
 use ratatui::{prelude::*, widgets::*};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use crate::DEVICE_CONFIG;
-use crate::util::get_secs;
+use crate::util::{get_secs, send_to_radio};
 use itertools::Itertools;
+use meshtastic::protobufs::{to_radio, ToRadio};
+use crate::ipc::IPCMessage;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConfigTab {
@@ -12,6 +14,7 @@ pub struct ConfigTab {
     pub device_config: DeviceConfiguration,
     tab: InnerConfigTabs,
 }
+
 
 
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
@@ -23,7 +26,7 @@ pub enum InnerConfigTabs {
     LoRa,
     Network,
     Position,
-    Power,
+    Power
 }
 
 impl InnerConfigTabs {
@@ -67,6 +70,9 @@ impl ConfigTab {
         match num {
             _ => {}
         }
+    }
+    pub(crate) fn render_sub_modules(&self, area: Rect, buf: &mut Buffer) {
+        todo!()
     }
     pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
         let titles = InnerConfigTabs::iter().map(InnerConfigTabs::title);

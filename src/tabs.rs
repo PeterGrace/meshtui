@@ -1,9 +1,11 @@
 pub(crate) mod about;
-mod config;
-mod messages;
+pub(crate) mod device_config;
+pub(crate) mod messages;
 pub(crate) mod nodes;
+pub(crate) mod modules_config;
 
 pub use about::AboutTab;
-pub use config::ConfigTab;
+pub use device_config::ConfigTab;
 pub use messages::MessagesTab;
 pub use nodes::NodesTab;
+pub use modules_config::ModulesConfigTab;

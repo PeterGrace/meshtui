@@ -23,6 +23,7 @@ use ratatui::{
 use std::io;
 use meshtastic::protobufs;
 use meshtastic::protobufs::config::*;
+use meshtastic::protobufs::module_config::*;
 use meshtastic::protobufs::PortNum::TracerouteApp;
 use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
@@ -37,7 +38,8 @@ pub struct App {
     pub mode: Mode,
     pub tab: MenuTabs,
     pub nodes_tab: NodesTab,
-    pub config_tab: ConfigTab,
+    pub device_config_tab: ConfigTab,
+    pub modules_config_tab: ModulesConfigTab,
     pub messages_tab: MessagesTab,
     pub about_tab: AboutTab,
     pub input_mode: InputMode,
@@ -98,19 +100,21 @@ impl App {
     }
 
     fn escape(&mut self) {
-        match self.tab {
-            MenuTabs::Nodes => self.mode = self.nodes_tab.escape(),
-            MenuTabs::Messages => self.mode = self.messages_tab.escape(),
-            MenuTabs::Config => self.mode = self.config_tab.escape(),
-            MenuTabs::About => self.mode = self.about_tab.escape(),
-            _ => self.mode = Mode::Exiting,
+        self.mode = match self.tab {
+            MenuTabs::Nodes => self.nodes_tab.escape(),
+            MenuTabs::Messages => self.messages_tab.escape(),
+            MenuTabs::DeviceConfig => self.device_config_tab.escape(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.escape(),
+            MenuTabs::About => self.about_tab.escape(),
+            _ => Mode::Exiting,
         }
     }
-    fn function_key(&mut self, num: u8) {
+    async fn function_key(&mut self, num: u8) {
         match self.tab {
-            MenuTabs::Nodes => self.nodes_tab.function_key(num),
+            MenuTabs::Nodes => self.nodes_tab.function_key(num).await,
             MenuTabs::Messages => self.messages_tab.function_key(num),
-            MenuTabs::Config => self.config_tab.function_key(num),
+            MenuTabs::DeviceConfig => self.device_config_tab.function_key(num),
+            MenuTabs::ModulesConfig => self.modules_config_tab.function_key(num),
             _ => {}
         }
     }
@@ -145,7 +149,8 @@ impl App {
             match self.tab {
                 MenuTabs::Nodes => self.nodes_tab.run().await,
                 MenuTabs::Messages => self.messages_tab.run().await,
-                MenuTabs::Config => self.config_tab.run().await,
+                MenuTabs::DeviceConfig => self.device_config_tab.run().await,
+                MenuTabs::ModulesConfig => self.modules_config_tab.run().await,
                 _ => {}
             }
 
@@ -168,7 +173,7 @@ impl App {
                             KeyCode::Enter => self.enter_key().await,
                             KeyCode::BackTab => self.prev_tab(),
                             KeyCode::Tab => self.next_tab(),
-                            KeyCode::F(n) => self.function_key(n),
+                            KeyCode::F(n) => self.function_key(n).await,
                             _ => {}
                         },
                         InputMode::Editing => match press.code {
@@ -292,30 +297,29 @@ impl App {
     }
     fn left(&mut self) {
         match self.tab {
-            MenuTabs::Config => self.config_tab.left(),
+            MenuTabs::DeviceConfig => self.device_config_tab.left(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.left(),
             _ => {}
         }
     }
     fn right(&mut self) {
         match self.tab {
-            MenuTabs::Config => self.config_tab.right(),
+            MenuTabs::DeviceConfig => self.device_config_tab.right(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.right(),
             _ => {}
         }
     }
     async fn back_tab(&mut self) {
         match self.tab {
-            MenuTabs::Nodes => self.nodes_tab.back_tab().await,
             _ => {}
-            //     MenuTabs::Messages => self.messages_tab.back_tab(),
-            //     MenuTabs::Config => self.config_tab.back_tab(),
-            //     MenuTabs::About => self.about_tab.back_tab(),
         }
     }
     fn prev(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_row(),
             MenuTabs::Messages => self.messages_tab.prev_row(),
-            MenuTabs::Config => self.config_tab.prev_row(),
+            MenuTabs::DeviceConfig => self.device_config_tab.prev_row(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.prev_row(),
             MenuTabs::About => self.about_tab.prev_row(),
             _ => {}
         }
@@ -324,8 +328,9 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_page(),
             MenuTabs::Messages => self.messages_tab.prev_page(),
-            MenuTabs::Config => self.config_tab.prev_row(),
-            MenuTabs::About => self.about_tab.prev_row(),
+            MenuTabs::DeviceConfig => {}
+            MenuTabs::ModulesConfig => {}
+            MenuTabs::About => {}
             _ => {}
         }
     }
@@ -334,7 +339,8 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.next_row(),
             MenuTabs::Messages => self.messages_tab.next_row(),
-            MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
             _ => {}
         }
@@ -343,7 +349,8 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.next_page(),
             MenuTabs::Messages => self.messages_tab.next_page(),
-            MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
             _ => {}
         }
@@ -380,7 +387,8 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.enter_key(),
             MenuTabs::Messages => self.enter_key_messages().await,
-            MenuTabs::Config => self.config_tab.next_row(),
+            MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
+            MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
             _ => {}
         }
@@ -486,7 +494,8 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.clone().render(area, buf),
             MenuTabs::Messages => self.messages_tab.clone().render(area, buf),
-            MenuTabs::Config => self.config_tab.clone().render(area, buf),
+            MenuTabs::DeviceConfig => self.device_config_tab.clone().render(area, buf),
+            MenuTabs::ModulesConfig => self.modules_config_tab.clone().render(area, buf),
             MenuTabs::About => self.about_tab.clone().render(area, buf),
             _ => {}
         }
@@ -545,7 +554,8 @@ pub enum MenuTabs {
     #[default]
     Messages,
     Nodes,
-    Config,
+    DeviceConfig,
+    ModulesConfig,
     About,
 }
 
@@ -585,5 +595,18 @@ pub struct DeviceConfiguration {
     pub network: NetworkConfig,
     pub position: PositionConfig,
     pub power: PowerConfig,
-    pub last_update: u64
+    pub mqtt: MqttConfig,
+    pub serial: SerialConfig,
+    pub external_notification: ExternalNotificationConfig,
+    pub store_forward: StoreForwardConfig,
+    pub range_test: RangeTestConfig,
+    pub telemetry: TelemetryConfig,
+    pub canned_message: CannedMessageConfig,
+    pub audio: AudioConfig,
+    pub remote_hardware: RemoteHardwareConfig,
+    pub neighbor_info: NeighborInfoConfig,
+    pub ambient_lighting: AmbientLightingConfig,
+    pub detection_sensor: DetectionSensorConfig,
+    pub paxcounter: PaxcounterConfig,
+    pub last_update: u64,
 }

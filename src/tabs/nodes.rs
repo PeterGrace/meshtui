@@ -50,7 +50,7 @@ pub struct ComprehensiveNode {
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
     pub last_rssi: i32,
-    pub route_list: HashMap<u32, Vec<u32>>,
+    pub route_list: HashMap<u32, Vec<u32>>
 }
 
 
@@ -96,8 +96,8 @@ impl NodesTab {
 
         //region layout and block pre-game
         let left_side_constraints = vec![
-            Constraint::Max(20),
-            Constraint::Min(0),
+            Constraint::Max(30),
+            Constraint::Max(30),
         ];
         let right_top_constraints = vec![
             Constraint::Min(0),
@@ -142,14 +142,15 @@ impl NodesTab {
 
         rows.push(Row::new(vec![
             "Node id (num)".to_string(),
-            cn.id.to_string(),
+            format!("{} (!{:x})",cn.id.to_string(), cn.id)
+
         ]));
 
         //region User-struct display fields
         if cn.node_info.user.is_some() {
             let user = cn.node_info.user.unwrap();
 
-            rows.push(Row::new(vec!["Id".to_string(), user.id.clone()]));
+            rows.push(Row::new(vec!["Id (According to User)".to_string(), user.id.clone()]));
 
             rows.push(Row::new(vec![
                 "Name (Short)".to_string(),
@@ -304,7 +305,7 @@ impl NodesTab {
             if routes.len() == 0 {
                 whole_route = format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id);
             } else {
-                let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join("->");
+                let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join(" -> ");
                 whole_route = format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id);
             }
             right_bottom_rows.push(Row::new(vec!["Latest Route:", ""]));
@@ -321,7 +322,7 @@ impl NodesTab {
         //endregion
     }
 
-    pub async fn back_tab(&mut self) {
+    pub async fn send_traceroute(&mut self) {
         if let Some(index) = self.table_state.selected() {
             self.selected_node = self.table_contents[index].clone();
 
@@ -441,11 +442,12 @@ impl NodesTab {
         };
         self.table_state.select(Some(i));
     }
-    pub fn function_key(&mut self, num: u8) {
+    pub async fn function_key(&mut self, num: u8) {
         match num {
             1 => {
                 self.display_mode = DisplayMode::Help
             }
+            2 => self.send_traceroute().await,
             _ => {}
         }
     }

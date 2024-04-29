@@ -2,11 +2,13 @@ use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::{DEVICE_CONFIG, util};
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery, Config};
+use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery, Config, LogRecord};
 use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
 use meshtastic::protobufs::config::{DeviceConfig, PayloadVariant};
+use meshtastic::protobufs::module_config::PayloadVariant as mpv;
+use meshtastic::protobufs::log_record::Level;
 use crate::app::DeviceConfiguration;
 use crate::util::get_secs;
 
@@ -286,7 +288,7 @@ pub async fn process_packet(
                     return Some(PacketResponse::NodeUpdate(ni.num, cn));
                 }
                 from_radio::PayloadVariant::Config(cfg) => {
-                    info!("Receiving config from device.");
+                    info!("Receiving DeviceConfig from device.");
                     match cfg.payload_variant {
                         None => {}
                         Some(s) => {
@@ -309,18 +311,90 @@ pub async fn process_packet(
                         }
                     }
                 }
+                from_radio::PayloadVariant::LogRecord(v) => {
+                    match v.level() {
+                        Level::Unset => {
+                            info!("Log Message: {}",v.message)
+                        }
+                        Level::Critical => {
+                            error!("Log Message: {}",v.message)
+                        }
+                        Level::Error => {
+                            error!("Log Message: {}", v.message)
+                        }
+                        Level::Warning => {
+                            warn!("Log Message: {}", v.message)
+                        }
+                        Level::Info => {
+                            info!("Log Message: {}", v.message)
+                        }
+                        Level::Debug => {
+                            debug!("Log Message: {}", v.message)
+                        }
+                        Level::Trace => {
+                            trace!("Log Message: {}", v.message)
+                        }
+                    }
+                    return None;
+                }
+                //from_radio::PayloadVariant::ConfigCompleteId(_) => {}
+                from_radio::PayloadVariant::Rebooted(v) => {
+                    if v {
+                        info!("Device has reported a reboot");
+                    }
+                    return None;
+                }
+                from_radio::PayloadVariant::ModuleConfig(module_obj) => {
+                    info!("Receiving ModulesConfig from device.");
+                    if let Some(module) = module_obj.payload_variant {
+                        let mut f = DEVICE_CONFIG.write().await;
+                        if f.is_none() {
+                            *f = Some(DeviceConfiguration::default());
+                        }
+                        let mut devcfg = f.clone().unwrap();
+
+                        match module {
+                            mpv::Mqtt(o) => { devcfg.mqtt = o }
+                            mpv::Serial(o) => { devcfg.serial = o }
+                            mpv::ExternalNotification(o) => { devcfg.external_notification = o }
+                            mpv::StoreForward(o) => { devcfg.store_forward = o }
+                            mpv::RangeTest(o) => { devcfg.range_test = o }
+                            mpv::Telemetry(o) => { devcfg.telemetry = o }
+                            mpv::CannedMessage(o) => { devcfg.canned_message = o }
+                            mpv::Audio(o) => { devcfg.audio = o }
+                            mpv::RemoteHardware(o) => { devcfg.remote_hardware = o }
+                            mpv::NeighborInfo(o) => { devcfg.neighbor_info = o }
+                            mpv::AmbientLighting(o) => { devcfg.ambient_lighting = o }
+                            mpv::DetectionSensor(o) => { devcfg.detection_sensor = o }
+                            mpv::Paxcounter(o) => { devcfg.paxcounter = o }
+                        }
+                        devcfg.last_update = get_secs();
+                        *f = Some(devcfg);
+                    }
+                }
+                from_radio::PayloadVariant::ConfigCompleteId(u) => {
+                    info!("We've received all config from the device! (Checksum {})", u);
+                }
+                // from_radio::PayloadVariant::Channel(_) => {}
+                from_radio::PayloadVariant::QueueStatus(v) => {
+                    debug!("QueueStatus: res {}/free {}/maxlen {}/mesh_packet_id {}",v.res, v.free, v.maxlen, v.mesh_packet_id);
+                    return None;
+                }
+                from_radio::PayloadVariant::XmodemPacket(v) => {
+                    info!("{:#?}",v);
+                    return None;
+                }
+                from_radio::PayloadVariant::Metadata(v) => {
+                    info!("Device firmware version: {}",v.firmware_version);
+                    return None;
+                }
+                from_radio::PayloadVariant::MqttClientProxyMessage(v) => {
+                    info!("{:#?}",v);
+                    return None;
+                }
                 _ => {
                     return None;
-                } // from_radio::PayloadVariant::Config(_) => {}
-                // from_radio::PayloadVariant::LogRecord(_) => {}
-                // from_radio::PayloadVariant::ConfigCompleteId(_) => {}
-                // from_radio::PayloadVariant::Rebooted(_) => {}
-                // from_radio::PayloadVariant::ModuleConfig(_) => {}
-                // from_radio::PayloadVariant::Channel(_) => {}
-                // from_radio::PayloadVariant::QueueStatus(_) => {}
-                // from_radio::PayloadVariant::XmodemPacket(_) => {}
-                // from_radio::PayloadVariant::Metadata(_) => {}
-                // from_radio::PayloadVariant::MqttClientProxyMessage(_) => {}
+                }
             }
         }
         return None;
