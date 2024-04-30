@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::consts;
 use crate::ipc::IPCMessage;
 use crate::meshtastic_interaction::meshtastic_loop;
@@ -10,22 +9,22 @@ use crate::tui::Event;
 use crate::{tui, util};
 use anyhow::Result;
 use color_eyre::eyre::WrapErr;
-use crossterm::event::{KeyCode};
+use crossterm::event::KeyCode;
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{Channel};
+use meshtastic::protobufs::Channel;
 use meshtastic::types::MeshChannel;
 use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Tabs},
 };
+use std::collections::HashMap;
 use std::io;
 
 use meshtastic::protobufs::config::*;
 use meshtastic::protobufs::module_config::*;
-
 
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use time::OffsetDateTime;
@@ -60,13 +59,13 @@ impl App {
             .border_set(symbols::border::DOUBLE)
             .style(THEME.middle);
         let popup_area = centered_rect(area, 60, 25);
-        let popup_layout = Layout::default()
+        let _popup_layout = Layout::default()
             .direction(Direction::Horizontal)
             .margin(1)
             .constraints([Constraint::Percentage(50)])
             .split(popup_area);
 
-        Widget::render(Clear::default(), area, buf);
+        Widget::render(Clear, area, buf);
         Widget::render(popup_block, popup_area, buf);
         Widget::render(
             Paragraph::new(self.input.clone()).style(THEME.message_selected),
@@ -109,7 +108,6 @@ impl App {
             MenuTabs::DeviceConfig => self.device_config_tab.escape(),
             MenuTabs::ModulesConfig => self.modules_config_tab.escape(),
             MenuTabs::About => self.about_tab.escape(),
-            _ => Mode::Exiting,
         }
     }
     async fn function_key(&mut self, num: u8) {
@@ -163,42 +161,40 @@ impl App {
             let _ = self.draw(&mut tui.terminal);
 
             // process input
-            if let Some(evt) = tui.next().await {
-                if let Event::Key(press) = evt {
-                    use KeyCode::*;
-                    match self.input_mode {
-                        InputMode::Normal => match press.code {
-                            Char('q') | Esc => self.escape(),
-                            Char('h') | Left => self.left(),
-                            Char('l') | Right => self.right(),
-                            Char('k') | Up => self.prev(),
-                            Char('j') | Down => self.next(),
-                            PageUp => self.prev_page(),
-                            PageDown => self.next_page(),
-                            KeyCode::Enter => self.enter_key().await,
-                            KeyCode::BackTab => self.prev_tab(),
-                            KeyCode::Tab => self.next_tab(),
-                            KeyCode::F(n) => self.function_key(n).await,
-                            _ => {}
-                        },
-                        InputMode::Editing => match press.code {
-                            KeyCode::Enter => self.enter_key().await,
-                            KeyCode::Char(to_insert) => self.enter_char(to_insert),
-                            KeyCode::Backspace => {
-                                self.delete_char();
-                            }
-                            KeyCode::Left => {
-                                self.move_cursor_left();
-                            }
-                            KeyCode::Right => {
-                                self.move_cursor_right();
-                            }
-                            KeyCode::Esc => {
-                                self.input_mode = InputMode::Normal;
-                            }
-                            _ => {}
-                        },
-                    }
+            if let Some(Event::Key(press)) = tui.next().await {
+                use KeyCode::*;
+                match self.input_mode {
+                    InputMode::Normal => match press.code {
+                        Char('q') | Esc => self.escape(),
+                        Char('h') | Left => self.left(),
+                        Char('l') | Right => self.right(),
+                        Char('k') | Up => self.prev(),
+                        Char('j') | Down => self.next(),
+                        PageUp => self.prev_page(),
+                        PageDown => self.next_page(),
+                        KeyCode::Enter => self.enter_key().await,
+                        KeyCode::BackTab => self.prev_tab(),
+                        KeyCode::Tab => self.next_tab(),
+                        KeyCode::F(n) => self.function_key(n).await,
+                        _ => {}
+                    },
+                    InputMode::Editing => match press.code {
+                        KeyCode::Enter => self.enter_key().await,
+                        KeyCode::Char(to_insert) => self.enter_char(to_insert),
+                        KeyCode::Backspace => {
+                            self.delete_char();
+                        }
+                        KeyCode::Left => {
+                            self.move_cursor_left();
+                        }
+                        KeyCode::Right => {
+                            self.move_cursor_right();
+                        }
+                        KeyCode::Esc => {
+                            self.input_mode = InputMode::Normal;
+                        }
+                        _ => {}
+                    },
                 }
             };
 
@@ -314,11 +310,6 @@ impl App {
             _ => {}
         }
     }
-    async fn back_tab(&mut self) {
-        match self.tab {
-            _ => {}
-        }
-    }
     fn prev(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_row(),
@@ -327,7 +318,6 @@ impl App {
             MenuTabs::DeviceConfig => self.device_config_tab.prev_row(),
             MenuTabs::ModulesConfig => self.modules_config_tab.prev_row(),
             MenuTabs::About => self.about_tab.prev_row(),
-            _ => {}
         }
     }
     fn prev_page(&mut self) {
@@ -349,7 +339,6 @@ impl App {
             MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
             MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
-            _ => {}
         }
     }
     fn next_page(&mut self) {
@@ -440,10 +429,6 @@ impl App {
         new_cursor_pos.clamp(0, self.input.len())
     }
 
-    fn reset_cursor(&mut self) {
-        self.cursor_position = 0;
-    }
-
     fn render_event_log(&self, area: Rect, buf: &mut Buffer) {
         let block = Block::new()
             .borders(Borders::ALL)
@@ -486,7 +471,7 @@ impl App {
 
     pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
         let titles = MenuTabs::iter().map(MenuTabs::title);
-        let top_menu = Tabs::new(titles)
+        Tabs::new(titles)
             .style(THEME.tabs)
             .highlight_style(THEME.tabs_selected)
             .divider("")
@@ -503,7 +488,6 @@ impl App {
             MenuTabs::DeviceConfig => self.device_config_tab.clone().render(area, buf),
             MenuTabs::ModulesConfig => self.modules_config_tab.clone().render(area, buf),
             MenuTabs::About => self.about_tab.render(area, buf),
-            _ => {}
         }
     }
 }
@@ -542,9 +526,7 @@ impl MenuTabs {
         Self::from_repr(prev_index).unwrap_or(self)
     }
     fn title(self) -> String {
-        match self {
-            tab => format!(" {tab} "),
-        }
+        format!(" {self} ")
     }
 }
 
@@ -567,7 +549,7 @@ pub enum MenuTabs {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-enum InputMode {
+pub enum InputMode {
     #[default]
     Normal,
     Editing,

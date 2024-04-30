@@ -17,7 +17,7 @@ pub struct Theme {
 }
 pub struct NodesTheme {
     pub list: Style,
-    pub detail: Style
+    pub detail: Style,
 }
 pub struct KeyBinding {
     pub key: Style,
@@ -54,10 +54,7 @@ pub const THEME: Theme = Theme {
     message_selected: Style::new()
         .fg(MENU_COLOR_FOREGROUND)
         .bg(MENU_COLOR_BACKGROUND),
-    popup_window: Style::new()
-        .fg(TV_WHITE)
-        .bg(TV_GREY)
-
+    popup_window: Style::new().fg(TV_WHITE).bg(TV_GREY),
 };
 
 //  https://docs.rs/ratatui/latest/ratatui/style/enum.Color.html#
@@ -71,8 +68,8 @@ pub const BORDER_MID_COLOR_BG: Color = TV_BLUE;
 pub const MID_COLOR_FG: Color = TV_YELLOW;
 pub const MID_COLOR_BG: Color = TV_BLUE;
 
-pub const TV_BLUE: Color = Color::Rgb(0,0,178);
-pub const TV_YELLOW: Color = Color::Rgb(200,200,107);
-pub const TV_GREEN: Color = Color::Rgb(24,178,24);
-pub const TV_WHITE: Color = Color::Rgb(255,255,255);
-pub const TV_GREY: Color = Color::Rgb(178,178,178);
+pub const TV_BLUE: Color = Color::Rgb(0, 0, 178);
+pub const TV_YELLOW: Color = Color::Rgb(200, 200, 107);
+pub const TV_GREEN: Color = Color::Rgb(24, 178, 24);
+pub const TV_WHITE: Color = Color::Rgb(255, 255, 255);
+pub const TV_GREY: Color = Color::Rgb(178, 178, 178);

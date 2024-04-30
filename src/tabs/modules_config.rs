@@ -1,21 +1,15 @@
 use crate::app::{DeviceConfiguration, Mode};
 use crate::theme::THEME;
+use crate::DEVICE_CONFIG;
 use ratatui::{prelude::*, widgets::*};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
-use crate::DEVICE_CONFIG;
-
-
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct ModulesConfigTab {
     row_index: usize,
     tab: ModuleTabs,
-    device_config: DeviceConfiguration
+    device_config: DeviceConfiguration,
 }
-
-
 
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
 pub enum ModuleTabs {
@@ -32,7 +26,7 @@ pub enum ModuleTabs {
     NeighborInfo,
     AmbientLighting,
     DetectionSensor,
-    Paxcounter
+    Paxcounter,
 }
 
 impl ModuleTabs {
@@ -47,9 +41,8 @@ impl ModuleTabs {
         Self::from_repr(prev_index).unwrap_or(self)
     }
     fn title(self) -> String {
-        match self {
-            tab => format!(" {tab} "),
-        }
+        let tab = self;
+        format!(" {tab} ")
     }
 }
 
@@ -72,17 +65,12 @@ impl ModulesConfigTab {
     pub fn next_row(&mut self) {
         self.row_index = self.row_index.saturating_add(1);
     }
-    pub fn function_key(&mut self, num: u8) {
-        match num {
-            _ => {}
-        }
-    }
-    pub(crate) fn render_sub_modules(&self, area: Rect, buf: &mut Buffer) {
-        todo!()
+    pub fn function_key(&mut self, _num: u8) {
+        {}
     }
     pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
         let titles = ModuleTabs::iter().map(ModuleTabs::title);
-        let inner_tabs = Tabs::new(titles)
+        Tabs::new(titles)
             .style(THEME.tabs)
             .highlight_style(THEME.tabs_selected)
             .divider("")
@@ -106,10 +94,7 @@ impl Widget for ModulesConfigTab {
             .border_set(symbols::border::ROUNDED)
             .style(THEME.middle);
 
-        let display_constraints = vec![
-            Constraint::Min(1),
-            Constraint::Percentage(100),
-        ];
+        let display_constraints = vec![Constraint::Min(1), Constraint::Percentage(100)];
 
         let [bar, field] = Layout::default()
             .direction(Direction::Vertical)
@@ -121,23 +106,46 @@ impl Widget for ModulesConfigTab {
 
         self.render_tabs(bar, buf);
         let pg = match self.tab {
-            ModuleTabs::Mqtt => { format!("{:#?}", self.device_config.mqtt)}
-            ModuleTabs::Serial => {format!("{:#?}", self.device_config.serial)}
-            ModuleTabs::ExternalNotification => {format!("{:#?}", self.device_config.external_notification)}
-            ModuleTabs::StoreForward => {format!("{:#?}", self.device_config.store_forward)}
-            ModuleTabs::RangeTest => {format!("{:#?}", self.device_config.range_test)}
-            ModuleTabs::Telemetry => {format!("{:#?}", self.device_config.telemetry)}
-            ModuleTabs::CannedMessage => {format!("{:#?}", self.device_config.canned_message)}
-            ModuleTabs::Audio => {format!("{:#?}", self.device_config.audio)}
-            ModuleTabs::RemoteHardware => {format!("{:#?}", self.device_config.remote_hardware)}
-            ModuleTabs::NeighborInfo => {format!("{:#?}", self.device_config.neighbor_info)}
-            ModuleTabs::AmbientLighting => {format!("{:#?}", self.device_config.ambient_lighting)}
-            ModuleTabs::DetectionSensor => {format!("{:#?}", self.device_config.detection_sensor)}
-            ModuleTabs::Paxcounter => {format!("{:#?}", self.device_config.paxcounter)}
+            ModuleTabs::Mqtt => {
+                format!("{:#?}", self.device_config.mqtt)
+            }
+            ModuleTabs::Serial => {
+                format!("{:#?}", self.device_config.serial)
+            }
+            ModuleTabs::ExternalNotification => {
+                format!("{:#?}", self.device_config.external_notification)
+            }
+            ModuleTabs::StoreForward => {
+                format!("{:#?}", self.device_config.store_forward)
+            }
+            ModuleTabs::RangeTest => {
+                format!("{:#?}", self.device_config.range_test)
+            }
+            ModuleTabs::Telemetry => {
+                format!("{:#?}", self.device_config.telemetry)
+            }
+            ModuleTabs::CannedMessage => {
+                format!("{:#?}", self.device_config.canned_message)
+            }
+            ModuleTabs::Audio => {
+                format!("{:#?}", self.device_config.audio)
+            }
+            ModuleTabs::RemoteHardware => {
+                format!("{:#?}", self.device_config.remote_hardware)
+            }
+            ModuleTabs::NeighborInfo => {
+                format!("{:#?}", self.device_config.neighbor_info)
+            }
+            ModuleTabs::AmbientLighting => {
+                format!("{:#?}", self.device_config.ambient_lighting)
+            }
+            ModuleTabs::DetectionSensor => {
+                format!("{:#?}", self.device_config.detection_sensor)
+            }
+            ModuleTabs::Paxcounter => {
+                format!("{:#?}", self.device_config.paxcounter)
+            }
         };
-        Paragraph::new(pg)
-            .block(device_block)
-            .render(field, buf);
+        Paragraph::new(pg).block(device_block).render(field, buf);
     }
 }
-

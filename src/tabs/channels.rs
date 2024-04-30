@@ -1,24 +1,21 @@
-use meshtastic::protobufs::Channel;
-use strum::Display;
-use crate::app::{Mode};
+use crate::app::Mode;
 use crate::theme::THEME;
-use ratatui::{prelude::*, widgets::*};
 use crate::{DEVICE_CONFIG, PAGE_SIZE};
-
+use meshtastic::protobufs::Channel;
+use ratatui::{prelude::*, widgets::*};
+use strum::Display;
 
 #[derive(Debug, Clone, Display, Default)]
 enum ChannelDisplayMode {
     #[default]
     List,
-    Help,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ChannelsTab {
     row_index: usize,
     page_size: u16,
-    display_mode: ChannelDisplayMode,
-    table_contents: Vec<Channel>
+    table_contents: Vec<Channel>,
 }
 
 impl ChannelsTab {
@@ -32,8 +29,7 @@ impl ChannelsTab {
                 self.table_contents = config.channels.values().cloned().collect();
             }
         }
-        self.table_contents.sort_by(|a,b| a.index.cmp(&b.index));
-
+        self.table_contents.sort_by(|a, b| a.index.cmp(&b.index));
     }
     pub fn escape(&mut self) -> Mode {
         Mode::Exiting
@@ -46,13 +42,8 @@ impl ChannelsTab {
     pub fn next_row(&mut self) {
         self.row_index = self.row_index.saturating_add(1);
     }
-    pub async fn function_key(&mut self, num: u8) {
-        match num {
-            // 1 => {
-            //     self.display_mode = ChannelDisplayMode::Help
-            // }
-            _ => {}
-        }
+    pub async fn function_key(&mut self, _num: u8) {
+        {}
     }
 }
 
@@ -66,25 +57,30 @@ impl Widget for ChannelsTab {
             Constraint::Max(10),
         ];
 
+        let rows: Vec<Row> = self
+            .table_contents
+            .iter()
+            .map(|c| {
+                let settings = c.clone().settings.unwrap();
+                Row::new(vec![
+                    format!("{:02}", c.index),
+                    format!("{}", settings.name),
+                    format!("{}/{}", settings.uplink_enabled, settings.downlink_enabled),
+                ])
+            })
+            .collect();
 
-        let rows: Vec<Row> = self.table_contents.iter().map(|c| {
-            let settings = c.clone().settings.unwrap();
-            Row::new(vec![
-                format!("{:02}", c.index),
-                format!("{}",settings.name),
-                format!("{}/{}",settings.uplink_enabled,settings.downlink_enabled),
-            ])
-        }).collect();
-
-        Widget::render(Table::new(rows, constraints)
-            .block(
+        Widget::render(
+            Table::new(rows, constraints).block(
                 Block::new()
                     .borders(Borders::ALL)
                     .title("About meshtui")
                     .title_alignment(Alignment::Center)
                     .border_set(symbols::border::DOUBLE)
                     .style(THEME.middle),
-            )
-            ,area, buf);
+            ),
+            area,
+            buf,
+        );
     }
 }

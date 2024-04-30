@@ -5,9 +5,9 @@ use crate::{consts, PAGE_SIZE};
 use circular_buffer::CircularBuffer;
 use itertools::Itertools;
 
+use crate::util::get_channel_from_id;
 use ratatui::{prelude::*, widgets::*};
 use time::OffsetDateTime;
-use crate::util::get_channel_from_id;
 
 #[derive(Debug, Clone, Default)]
 pub struct MessagesTab {
@@ -31,7 +31,7 @@ impl MessagesTab {
     pub fn prev_row(&mut self) {
         let i = match self.table_state.selected() {
             Some(i) => {
-                if i <= 0 {
+                if i == 0 {
                     self.messages.len().saturating_sub(1)
                 } else {
                     i.saturating_sub(1)
@@ -82,12 +82,9 @@ impl MessagesTab {
         debug!("i is {i}");
         self.table_state.select(Some(i));
     }
-    pub fn function_key(&mut self, num: u8) {
-        match num {
-            _ => {}
-        }
+    pub fn function_key(&mut self, _num: u8) {
+        {}
     }
-
 }
 
 impl Widget for MessagesTab {
@@ -124,7 +121,7 @@ impl Widget for MessagesTab {
 
                 let channel_name = match get_channel_from_id(message.channel.channel()) {
                     Some(s) => s.settings.unwrap().name.clone(),
-                    None=> "".to_string()
+                    None => "".to_string(),
                 };
 
                 let destination_str = format!("{} (Ch. {})", channel_name, &message.channel);

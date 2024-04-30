@@ -6,5 +6,4 @@ pub enum IPCMessage {
     FromRadio(FromRadio),
     ToRadio(ToRadio),
     SendMessage(MessageEnvelope),
-    ExitingThread,
 }

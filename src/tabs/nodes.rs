@@ -7,15 +7,15 @@ use crate::{consts, util, PAGE_SIZE};
 use geoutils::Location;
 use itertools::Itertools;
 
+use meshtastic::protobufs;
+use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
+use meshtastic::protobufs::PortNum::TracerouteApp;
 use meshtastic::protobufs::*;
 use pretty_duration::pretty_duration;
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
-use meshtastic::protobufs;
-use meshtastic::protobufs::PortNum::TracerouteApp;
-use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 
 use crate::ipc::IPCMessage;
 
@@ -34,7 +34,6 @@ pub struct NodesTab {
     table_state: TableState,
     pub table_contents: Vec<ComprehensiveNode>,
     pub scrollbar_state: ScrollbarState,
-    vertical_scroll: i32,
     pub my_node_id: u32,
     prefs: Preferences,
     pub display_mode: DisplayMode,
@@ -50,15 +49,15 @@ pub struct ComprehensiveNode {
     pub neighbors: Vec<Neighbor>,
     pub last_snr: f32,
     pub last_rssi: i32,
-    pub route_list: HashMap<u32, Vec<u32>>
+    pub route_list: HashMap<u32, Vec<u32>>,
 }
-
 
 impl ComprehensiveNode {
     pub fn with_id(id: u32) -> Self {
-        let mut cn = ComprehensiveNode::default();
-        cn.id = id;
-        cn
+        ComprehensiveNode {
+            id,
+            ..Default::default()
+        }
     }
 }
 
@@ -95,21 +94,14 @@ impl NodesTab {
         let cn = self.selected_node.clone();
 
         //region layout and block pre-game
-        let left_side_constraints = vec![
-            Constraint::Max(30),
-            Constraint::Max(30),
-        ];
+        let left_side_constraints = vec![Constraint::Max(30), Constraint::Max(30)];
         let right_top_constraints = vec![
             Constraint::Min(0),
             Constraint::Min(10),
             Constraint::Min(10),
             Constraint::Min(25),
         ];
-        let right_bottom_constraints = vec![
-            Constraint::Max(13),
-            Constraint::Min(0),
-        ];
-
+        let right_bottom_constraints = vec![Constraint::Max(13), Constraint::Min(0)];
 
         let default_inner_block = Block::default()
             .borders(Borders::ALL)
@@ -132,7 +124,6 @@ impl NodesTab {
             .areas(right_side);
         //endregion
 
-
         //region left-side fields
         let mut rows: Vec<Row> = vec![];
 
@@ -142,15 +133,17 @@ impl NodesTab {
 
         rows.push(Row::new(vec![
             "Node id (num)".to_string(),
-            format!("{} (!{:x})",cn.id.to_string(), cn.id)
-
+            format!("{} (!{:x})", cn.id.to_string(), cn.id),
         ]));
 
         //region User-struct display fields
         if cn.node_info.user.is_some() {
             let user = cn.node_info.user.unwrap();
 
-            rows.push(Row::new(vec!["Id (According to User)".to_string(), user.id.clone()]));
+            rows.push(Row::new(vec![
+                "Id (According to User)".to_string(),
+                user.id.clone(),
+            ]));
 
             rows.push(Row::new(vec![
                 "Name (Short)".to_string(),
@@ -247,24 +240,23 @@ impl NodesTab {
         }
         //endregion
 
-
         Widget::render(
-            Table::new(
-                rows,
-                left_side_constraints,
-            )
+            Table::new(rows, left_side_constraints)
                 .highlight_style(THEME.tabs_selected)
-                .block(left_block), left_side, buf);
-//endregion
+                .block(left_block),
+            left_side,
+            buf,
+        );
+        //endregion
 
         //region right-top
         let mut right_top_rows: Vec<Row> = vec![];
         //region NeighborApp display fields
-        if cn.neighbors.len() > 0 {
+        if !cn.neighbors.is_empty() {
             right_top_rows.push(Row::new(vec![""]));
             right_top_rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
             right_top_rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
-            for (i, item) in cn.neighbors.iter().enumerate() {
+            for item in cn.neighbors.iter() {
                 let id = self
                     .node_list
                     .get(&item.node_id)
@@ -289,36 +281,34 @@ impl NodesTab {
         }
 
         Widget::render(
-            Table::new(
-                right_top_rows,
-                right_top_constraints,
-            )
+            Table::new(right_top_rows, right_top_constraints)
                 .highlight_style(THEME.tabs_selected)
-                .block(right_top_block), right_top_layout, buf);
+                .block(right_top_block),
+            right_top_layout,
+            buf,
+        );
         //endregion
 
         //region traceroute display
         let mut right_bottom_rows: Vec<Row> = vec![];
         if let Some(routes) = cn.route_list.get(&me.id) {
-            let mut whole_route: String = "Unknown".to_string();
-
-            if routes.is_empty() {
-                whole_route = format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id);
+            let whole_route: String = if routes.is_empty() {
+                format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id)
             } else {
                 let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join(" -> ");
-                whole_route = format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id);
-            }
+                format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id)
+            };
             right_bottom_rows.push(Row::new(vec!["Latest Route:", ""]));
             right_bottom_rows.push(Row::new(vec!["".to_string(), whole_route]));
         };
 
         Widget::render(
-            Table::new(
-                right_bottom_rows,
-                right_bottom_constraints,
-            )
+            Table::new(right_bottom_rows, right_bottom_constraints)
                 .highlight_style(THEME.tabs_selected)
-                .block(right_bottom_block), right_bottom_layout, buf);
+                .block(right_bottom_block),
+            right_bottom_layout,
+            buf,
+        );
         //endregion
     }
 
@@ -326,6 +316,7 @@ impl NodesTab {
         if let Some(index) = self.table_state.selected() {
             self.selected_node = self.table_contents[index].clone();
 
+            #[allow(deprecated)]
             let mesh_packet = MeshPacket {
                 from: 0,
                 to: self.selected_node.id,
@@ -352,12 +343,12 @@ impl NodesTab {
                 })),
             };
             let payload_variant = Some(Packet(mesh_packet));
-            if let Err(e) = util::send_to_radio(IPCMessage::ToRadio(ToRadio { payload_variant }))
-                .await
+            if let Err(e) =
+                util::send_to_radio(IPCMessage::ToRadio(ToRadio { payload_variant })).await
             {
                 error!("Tried sending traceroute but failed: {e}");
             } else {
-                info!("Emitted Traceroute Request to !{:x}",self.selected_node.id);
+                info!("Emitted Traceroute Request to !{:x}", self.selected_node.id);
             }
         }
     }
@@ -389,7 +380,7 @@ impl NodesTab {
     pub fn prev_row(&mut self) {
         let i = match self.table_state.selected() {
             Some(i) => {
-                if i <= 0 {
+                if i == 0 {
                     self.table_contents.len().saturating_sub(1)
                 } else {
                     i.saturating_sub(1)
@@ -444,9 +435,7 @@ impl NodesTab {
     }
     pub async fn function_key(&mut self, num: u8) {
         match num {
-            1 => {
-                self.display_mode = DisplayMode::Help
-            }
+            1 => self.display_mode = DisplayMode::Help,
             2 => self.send_traceroute().await,
             _ => {}
         }
@@ -479,10 +468,10 @@ impl Widget for NodesTab {
                     .border_style(THEME.popup_window);
 
                 Widget::render(
-                    Paragraph::new(consts::NODE_HELP_TEXT)
-                    .block(help_block),
+                    Paragraph::new(consts::NODE_HELP_TEXT).block(help_block),
                     area,
-                    buf);
+                    buf,
+                );
             }
 
             DisplayMode::Detail => {
@@ -492,7 +481,6 @@ impl Widget for NodesTab {
                     .title_alignment(Alignment::Center)
                     .border_set(symbols::border::DOUBLE)
                     .border_style(THEME.popup_window);
-
 
                 //let popup_area = crate::app::centered_rect(area, 100, 61);
                 Widget::render(Clear, area, buf);
@@ -532,7 +520,7 @@ impl Widget for NodesTab {
                     .iter()
                     .map(|cn| {
                         let _add_this_entry: bool = true;
-                        let mut user_id_str = "Unknown".to_string();
+                        let user_id_str;
                         let user = cn.clone().node_info.user.unwrap_or_default();
                         if !user.id.is_empty() {
                             if cn.id == self.my_node_id {
@@ -543,19 +531,12 @@ impl Widget for NodesTab {
                         } else {
                             user_id_str = format!("*{:x}", cn.clone().id);
                         }
-                        let device = cn
-                            .clone()
-                            .node_info
-                            .device_metrics
-                            .unwrap_or_default();
-                        let position = cn
-                            .clone()
-                            .node_info
-                            .position
-                            .unwrap_or_default();
+                        let device = cn.clone().node_info.device_metrics.unwrap_or_default();
+                        let position = cn.clone().node_info.position.unwrap_or_default();
 
                         let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
-                        let station_lon = position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                        let station_lon =
+                            position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                         let mut distance_str = "".to_string();
                         if my_location.is_some() {
                             let station_location = Location::new(station_lat, station_lon);
@@ -571,19 +552,18 @@ impl Widget for NodesTab {
                             false => cn.node_info.hops_away.to_string(),
                         };
 
-                        let mut now_secs = get_secs();
-                        let mut ni_lastheard_since: u64 = 0;
+                        let now_secs = get_secs();
                         let mut ni_lastheard_since_string = "Unknown".to_string();
-                        let mut update_since_string = "Unknown".to_string();
-                        ni_lastheard_since = now_secs.saturating_sub(cn.node_info.last_heard as u64);
-                        if (ni_lastheard_since >= 0) && (ni_lastheard_since != now_secs) {
+                        let _update_since_string = "Unknown".to_string();
+                        let ni_lastheard_since =
+                            now_secs.saturating_sub(cn.node_info.last_heard as u64);
+                        if (ni_lastheard_since > 0) && (ni_lastheard_since != now_secs) {
                             ni_lastheard_since_string =
                                 pretty_duration(&Duration::from_secs(ni_lastheard_since), None);
                         };
-                        let mut lastupdate_since: u64 = 0;
                         let mut lastupdate_since_string: String = "Unknown".to_string();
-                        lastupdate_since = now_secs.saturating_sub(cn.last_seen);
-                        if (lastupdate_since >= 0) && (lastupdate_since != now_secs) {
+                        let lastupdate_since = now_secs.saturating_sub(cn.last_seen);
+                        if (lastupdate_since > 0) && (lastupdate_since != now_secs) {
                             lastupdate_since_string =
                                 pretty_duration(&Duration::from_secs(lastupdate_since), None);
                         }
@@ -621,8 +601,10 @@ impl Widget for NodesTab {
                         let mut rf_str = "".to_string();
                         if !cn.node_info.via_mqtt {
                             if cn.last_snr.ne(&0.0) {
-                                rf_str =
-                                    format!("SNR:{:.2}dB / RSSI:{:.0}dB", cn.last_snr, cn.last_rssi);
+                                rf_str = format!(
+                                    "SNR:{:.2}dB / RSSI:{:.0}dB",
+                                    cn.last_snr, cn.last_rssi
+                                );
                             }
                         } else {
                             rf_str = "MQTT".to_string();
@@ -667,8 +649,8 @@ impl Widget for NodesTab {
                     "Last Heard NodeInfo",
                     "Last Update",
                 ])
-                    .set_style(THEME.message_header)
-                    .bottom_margin(1);
+                .set_style(THEME.message_header)
+                .bottom_margin(1);
 
                 let block = Block::new()
                     .borders(Borders::ALL)

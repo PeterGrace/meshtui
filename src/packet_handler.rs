@@ -1,16 +1,19 @@
+use crate::app::DeviceConfiguration;
 use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
-use crate::{DEVICE_CONFIG, util};
+use crate::util::get_secs;
+use crate::{util, DEVICE_CONFIG};
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery};
+use meshtastic::protobufs::config::PayloadVariant;
+use meshtastic::protobufs::log_record::Level;
+use meshtastic::protobufs::module_config::PayloadVariant as mpv;
+use meshtastic::protobufs::{
+    from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position,
+    RouteDiscovery, Routing, User,
+};
 use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
-use meshtastic::protobufs::config::{PayloadVariant};
-use meshtastic::protobufs::module_config::PayloadVariant as mpv;
-use meshtastic::protobufs::log_record::Level;
-use crate::app::DeviceConfiguration;
-use crate::util::get_secs;
 
 pub(crate) enum PacketResponse {
     NodeUpdate(u32, ComprehensiveNode),
@@ -70,7 +73,7 @@ pub async fn process_packet(
                                         let data = meshtastic::protobufs::Telemetry::decode(
                                             de.payload.as_slice(),
                                         )
-                                            .unwrap();
+                                        .unwrap();
                                         if let Some(v) = data.variant {
                                             match v {
                                                 telemetry::Variant::DeviceMetrics(dm) => {
@@ -107,8 +110,8 @@ pub async fn process_packet(
                                                 _ => {
                                                     return None;
                                                 } // Variant::EnvironmentMetrics(_) => {}
-                                                // Variant::AirQualityMetrics(_) => {}
-                                                // Variant::PowerMetrics(_) => {}
+                                                  // Variant::AirQualityMetrics(_) => {}
+                                                  // Variant::PowerMetrics(_) => {}
                                             }
                                         }
                                         return None;
@@ -157,7 +160,11 @@ pub async fn process_packet(
                                             "Received node info update for {} ({})",
                                             data.id, pa.from
                                         );
-                                        let nid = u32::from_str_radix(data.id.clone().trim_start_matches('!'), 16).unwrap_or(0_u32);
+                                        let nid = u32::from_str_radix(
+                                            data.id.clone().trim_start_matches('!'),
+                                            16,
+                                        )
+                                        .unwrap_or(0_u32);
                                         if nid == 0 {
                                             error!("Received a node update but the node string ({}) is not parseable hexadecimal",data.id.clone());
                                             return None;
@@ -169,16 +176,16 @@ pub async fn process_packet(
                                         let data = Routing::decode(de.payload.as_slice()).unwrap();
                                         if let Some(v) = data.variant {
                                             match v {
-                                                routing::Variant::RouteRequest(r) => {
+                                                routing::Variant::RouteRequest(_r) => {
                                                     info!("RouteRequest");
                                                 }
-                                                routing::Variant::RouteReply(rr) => {
+                                                routing::Variant::RouteReply(_rr) => {
                                                     info!("RouteReply")
                                                 }
                                                 routing::Variant::ErrorReason(er) => match er {
                                                     0 => {
-                                                        let from_id = pa.clone().from;
-                                                        let to_id = pa.clone().to;
+                                                        let _from_id = pa.clone().from;
+                                                        let _to_id = pa.clone().to;
 
                                                         debug!("Routing Message: Outbound message id {} successfully transmitted" ,de.request_id);
                                                     }
@@ -190,19 +197,23 @@ pub async fn process_packet(
                                         }
                                     }
                                     PortNum::TracerouteApp => {
-                                        let val_resp = RouteDiscovery::decode(de.payload.as_slice());
+                                        let val_resp =
+                                            RouteDiscovery::decode(de.payload.as_slice());
                                         if let Ok(route) = val_resp {
                                             let from_id = pa.clone().from;
                                             let to_id = pa.clone().to;
                                             let mut cn = match node_list.get(&from_id) {
                                                 None => {
-                                                    panic!("{:#?}", pa.clone());
+                                                    error!("{:#?}", pa.clone());
                                                     return None;
                                                 }
                                                 Some(n) => n.clone(),
                                             };
                                             cn.route_list.insert(to_id, route.clone().route);
-                                            info!("updating route table to {:#?} for !{:x}->!{:x}",route.route,from_id,to_id);
+                                            info!(
+                                                "updating route table to {:#?} for !{:x}->!{:x}",
+                                                route.route, from_id, to_id
+                                            );
                                             return Some(PacketResponse::NodeUpdate(cn.id, cn));
                                         }
                                     }
@@ -222,10 +233,8 @@ pub async fn process_packet(
                                                     return None;
                                                 }
                                             };
-                                            let dest_ni = match node_list.get(&pa.to) {
-                                                Some(s) => Some(s.clone().node_info),
-                                                None => None,
-                                            };
+                                            let _dest_ni =
+                                                node_list.get(&pa.to).map(|s| s.clone().node_info);
                                             let destinated: PacketDestination = match pa.to {
                                                 0 => PacketDestination::Local,
                                                 u32::MAX => PacketDestination::Broadcast,
@@ -251,14 +260,14 @@ pub async fn process_packet(
                                         }
                                     }
                                     _ => {
-                                        panic!("{:#?}", de);
+                                        error!("{:#?}", de);
                                         return None;
                                     } // PortNum::AdminApp => {}
-                                    // PortNum::WaypointApp => {}
+                                      // PortNum::WaypointApp => {}
 
-                                    // PortNum::PaxcounterApp => {}
-                                    // PortNum::StoreForwardApp => {}
-                                    // PortNum::RangeTestApp => {}
+                                      // PortNum::PaxcounterApp => {}
+                                      // PortNum::StoreForwardApp => {}
+                                      // PortNum::RangeTestApp => {}
                                 }
                             }
                             mesh_packet::PayloadVariant::Encrypted(_) => {
@@ -304,7 +313,7 @@ pub async fn process_packet(
                                 PayloadVariant::Network(n) => devcfg.network = n,
                                 PayloadVariant::Display(d) => devcfg.display = d,
                                 PayloadVariant::Lora(l) => devcfg.lora = l,
-                                PayloadVariant::Bluetooth(b) => devcfg.bluetooth = b
+                                PayloadVariant::Bluetooth(b) => devcfg.bluetooth = b,
                             }
                             devcfg.last_update = get_secs();
                             *f = Some(devcfg);
@@ -314,10 +323,10 @@ pub async fn process_packet(
                 from_radio::PayloadVariant::LogRecord(v) => {
                     match v.level() {
                         Level::Unset => {
-                            info!("Log Message: {}",v.message)
+                            info!("Log Message: {}", v.message)
                         }
                         Level::Critical => {
-                            error!("Log Message: {}",v.message)
+                            error!("Log Message: {}", v.message)
                         }
                         Level::Error => {
                             error!("Log Message: {}", v.message)
@@ -354,26 +363,29 @@ pub async fn process_packet(
                         let mut devcfg = f.clone().unwrap();
 
                         match module {
-                            mpv::Mqtt(o) => { devcfg.mqtt = o }
-                            mpv::Serial(o) => { devcfg.serial = o }
-                            mpv::ExternalNotification(o) => { devcfg.external_notification = o }
-                            mpv::StoreForward(o) => { devcfg.store_forward = o }
-                            mpv::RangeTest(o) => { devcfg.range_test = o }
-                            mpv::Telemetry(o) => { devcfg.telemetry = o }
-                            mpv::CannedMessage(o) => { devcfg.canned_message = o }
-                            mpv::Audio(o) => { devcfg.audio = o }
-                            mpv::RemoteHardware(o) => { devcfg.remote_hardware = o }
-                            mpv::NeighborInfo(o) => { devcfg.neighbor_info = o }
-                            mpv::AmbientLighting(o) => { devcfg.ambient_lighting = o }
-                            mpv::DetectionSensor(o) => { devcfg.detection_sensor = o }
-                            mpv::Paxcounter(o) => { devcfg.paxcounter = o }
+                            mpv::Mqtt(o) => devcfg.mqtt = o,
+                            mpv::Serial(o) => devcfg.serial = o,
+                            mpv::ExternalNotification(o) => devcfg.external_notification = o,
+                            mpv::StoreForward(o) => devcfg.store_forward = o,
+                            mpv::RangeTest(o) => devcfg.range_test = o,
+                            mpv::Telemetry(o) => devcfg.telemetry = o,
+                            mpv::CannedMessage(o) => devcfg.canned_message = o,
+                            mpv::Audio(o) => devcfg.audio = o,
+                            mpv::RemoteHardware(o) => devcfg.remote_hardware = o,
+                            mpv::NeighborInfo(o) => devcfg.neighbor_info = o,
+                            mpv::AmbientLighting(o) => devcfg.ambient_lighting = o,
+                            mpv::DetectionSensor(o) => devcfg.detection_sensor = o,
+                            mpv::Paxcounter(o) => devcfg.paxcounter = o,
                         }
                         devcfg.last_update = get_secs();
                         *f = Some(devcfg);
                     }
                 }
                 from_radio::PayloadVariant::ConfigCompleteId(u) => {
-                    info!("We've received all config from the device! (Checksum {})", u);
+                    info!(
+                        "We've received all config from the device! (Checksum {})",
+                        u
+                    );
                 }
                 from_radio::PayloadVariant::Channel(c) => {
                     let mut channelpacket = c.clone();
@@ -383,14 +395,14 @@ pub async fn process_packet(
                             *f = Some(DeviceConfiguration::default());
                         }
                         let mut devcfg = f.clone().unwrap();
-                        if c.index == 0
-                            && channel.name.is_empty()
-                            && channel.psk == [1]
-                        {
+                        if c.index == 0 && channel.name.is_empty() && channel.psk == [1] {
                             channel.name = "LongFast (Default)".to_string();
                         };
                         channelpacket.settings = Some(channel.clone());
-                        info!("Storing channel config for {} (Ch: {})",channel.name, c.index);
+                        info!(
+                            "Storing channel config for {} (Ch: {})",
+                            channel.name, c.index
+                        );
                         devcfg.channels.insert(c.index, channelpacket.clone());
 
                         devcfg.last_update = get_secs();
@@ -398,22 +410,22 @@ pub async fn process_packet(
                     }
                 }
                 from_radio::PayloadVariant::QueueStatus(v) => {
-                    debug!("QueueStatus: res {}/free {}/maxlen {}/mesh_packet_id {}",v.res, v.free, v.maxlen, v.mesh_packet_id);
+                    debug!(
+                        "QueueStatus: res {}/free {}/maxlen {}/mesh_packet_id {}",
+                        v.res, v.free, v.maxlen, v.mesh_packet_id
+                    );
                     return None;
                 }
                 from_radio::PayloadVariant::XmodemPacket(v) => {
-                    info!("{:#?}",v);
+                    info!("{:#?}", v);
                     return None;
                 }
                 from_radio::PayloadVariant::Metadata(v) => {
-                    info!("Device firmware version: {}",v.firmware_version);
+                    info!("Device firmware version: {}", v.firmware_version);
                     return None;
                 }
                 from_radio::PayloadVariant::MqttClientProxyMessage(v) => {
-                    info!("{:#?}",v);
-                    return None;
-                }
-                _ => {
+                    info!("{:#?}", v);
                     return None;
                 }
             }

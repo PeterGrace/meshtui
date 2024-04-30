@@ -2,10 +2,7 @@ use crate::app::Connection;
 use crate::ipc::IPCMessage;
 use anyhow::{bail, Result};
 
-
-
-
-use meshtastic::packet::{PacketRouter};
+use meshtastic::packet::PacketRouter;
 
 use meshtastic::protobufs::{FromRadio, MeshPacket};
 use meshtastic::types::NodeId;
@@ -13,6 +10,7 @@ use meshtastic::{api::StreamApi, utils};
 use strum::Display;
 use thiserror::Error;
 
+#[allow(dead_code)]
 #[derive(Display, Clone, Debug, Error)]
 pub enum DeviceUpdateError {
     PacketNotSupported(String),
@@ -90,44 +88,37 @@ pub(crate) async fn meshtastic_loop(
     info!("Connected to meshtastic node!");
     let mut packet_router = MyPacketRouter::new(0);
     loop {
-        match decoded_listener.try_recv() {
-            Ok(fr) => {
-                if let Err(e) = tx.send(IPCMessage::FromRadio(fr)).await {
-                    error!("Couldn't send FromRadio packet to mpsc: {e}");
-                }
+        if let Ok(fr) = decoded_listener.try_recv() {
+            if let Err(e) = tx.send(IPCMessage::FromRadio(fr)).await {
+                error!("Couldn't send FromRadio packet to mpsc: {e}");
             }
-            Err(_) => {}
         }
-        match rx.try_recv() {
-            Ok(inbound) => {
-                match inbound {
-                    IPCMessage::SendMessage(message) => {
-                        if let Err(e) = _stream_api
-                            .send_text(
-                                &mut packet_router,
-                                message.message,
-                                message.destination,
-                                true,
-                                message.channel,
-                            )
-                            .await
-                        {
-                            error!("We tried to send a message but... nope: {e}");
-                        }
-                    }
-                    IPCMessage::ToRadio(tr) => {
-                        if let Err(e) = _stream_api.send_to_radio_packet(tr.payload_variant).await {
-                            error!("We tried to send a ToRadio message directly but errored: {e}");
-                        }
-                    }
-                    _ => {
-                        warn!("Unknown ipc message sent into comms thread.");
+        if let Ok(inbound) = rx.try_recv() {
+            match inbound {
+                IPCMessage::SendMessage(message) => {
+                    if let Err(e) = _stream_api
+                        .send_text(
+                            &mut packet_router,
+                            message.message,
+                            message.destination,
+                            true,
+                            message.channel,
+                        )
+                        .await
+                    {
+                        error!("We tried to send a message but... nope: {e}");
                     }
                 }
+                IPCMessage::ToRadio(tr) => {
+                    if let Err(e) = _stream_api.send_to_radio_packet(tr.payload_variant).await {
+                        error!("We tried to send a ToRadio message directly but errored: {e}");
+                    }
+                }
+                _ => {
+                    warn!("Unknown ipc message sent into comms thread.");
+                }
             }
-                Err(_) => {}
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         }
-        Ok(())
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
     }
+}

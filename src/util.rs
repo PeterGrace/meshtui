@@ -1,8 +1,8 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ipc::IPCMessage;
+use crate::DEVICE_CONFIG;
 use anyhow::{bail, Result};
 use meshtastic::protobufs::Channel;
-use crate::DEVICE_CONFIG;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn get_secs() -> u64 {
     SystemTime::now()
@@ -20,22 +20,17 @@ pub fn get_channel_from_id(id: u32) -> Option<Channel> {
                 return channel.cloned();
             };
             None
-        },
+        }
         Err(_e) => {
             warn!("Couldn't lock config for shared read, so, channel lookup failed.");
             None
         }
     }
-
 }
 
 pub async fn send_to_radio(ipc: IPCMessage) -> Result<()> {
     let trm = crate::TO_RADIO_MPSC.write().await.clone().unwrap();
-    if let Err(e) = trm
-        .clone()
-        .send(ipc)
-        .await
-    {
+    if let Err(e) = trm.clone().send(ipc).await {
         bail!(e);
     }
     Ok(())

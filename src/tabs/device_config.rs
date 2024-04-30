@@ -1,12 +1,8 @@
 use crate::app::{DeviceConfiguration, Mode};
 use crate::theme::THEME;
+use crate::DEVICE_CONFIG;
 use ratatui::{prelude::*, widgets::*};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
-use crate::DEVICE_CONFIG;
-
-
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct ConfigTab {
@@ -14,8 +10,6 @@ pub struct ConfigTab {
     pub device_config: DeviceConfiguration,
     tab: InnerConfigTabs,
 }
-
-
 
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
 pub enum InnerConfigTabs {
@@ -26,7 +20,7 @@ pub enum InnerConfigTabs {
     LoRa,
     Network,
     Position,
-    Power
+    Power,
 }
 
 impl InnerConfigTabs {
@@ -41,9 +35,8 @@ impl InnerConfigTabs {
         Self::from_repr(prev_index).unwrap_or(self)
     }
     fn title(self) -> String {
-        match self {
-            tab => format!(" {tab} "),
-        }
+        let tab = self;
+        format!(" {tab} ")
     }
 }
 
@@ -66,17 +59,12 @@ impl ConfigTab {
     pub fn next_row(&mut self) {
         self.row_index = self.row_index.saturating_add(1);
     }
-    pub fn function_key(&mut self, num: u8) {
-        match num {
-            _ => {}
-        }
-    }
-    pub(crate) fn render_sub_modules(&self, area: Rect, buf: &mut Buffer) {
-        todo!()
+    pub fn function_key(&mut self, _num: u8) {
+        {}
     }
     pub fn render_tabs(&self, area: Rect, buf: &mut Buffer) {
         let titles = InnerConfigTabs::iter().map(InnerConfigTabs::title);
-        let inner_tabs = Tabs::new(titles)
+        Tabs::new(titles)
             .style(THEME.tabs)
             .highlight_style(THEME.tabs_selected)
             .divider("")
@@ -100,10 +88,7 @@ impl Widget for ConfigTab {
             .border_set(symbols::border::ROUNDED)
             .style(THEME.middle);
 
-        let display_constraints = vec![
-            Constraint::Min(1),
-            Constraint::Percentage(100),
-        ];
+        let display_constraints = vec![Constraint::Min(1), Constraint::Percentage(100)];
 
         let [bar, field] = Layout::default()
             .direction(Direction::Vertical)
@@ -122,11 +107,7 @@ impl Widget for ConfigTab {
             InnerConfigTabs::Network => format!("{:#?}", self.device_config.network),
             InnerConfigTabs::Position => format!("{:#?}", self.device_config.position),
             InnerConfigTabs::Power => format!("{:#?}", self.device_config.power),
-            _ => "Unknown".to_string()
         };
-        Paragraph::new(pg)
-            .block(device_block)
-            .render(field, buf);
+        Paragraph::new(pg).block(device_block).render(field, buf);
     }
 }
-
