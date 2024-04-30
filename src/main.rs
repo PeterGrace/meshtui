@@ -19,9 +19,9 @@ use crate::clap::CliArgs;
 use ::clap::Parser;
 use app::App;
 use lazy_static::lazy_static;
-use std::env::VarError;
+
 use std::process;
-use std::sync::atomic;
+
 use tokio::io;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
@@ -67,7 +67,7 @@ async fn main() -> io::Result<()> {
         prefs.initialized = "Yes".to_owned();
         prefs.show_mqtt = cli.show_mqtt;
     }
-    assert!(PREFERENCES.read().await.initialized.len() > 0);
+    assert!(!PREFERENCES.read().await.initialized.is_empty());
     let _ = app.run().await;
 
     Ok(())

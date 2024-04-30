@@ -6,7 +6,7 @@ use crate::PREFERENCES;
 use crate::{consts, util, PAGE_SIZE};
 use geoutils::Location;
 use itertools::Itertools;
-use meshtastic::protobufs::config::device_config::Role;
+
 use meshtastic::protobufs::*;
 use pretty_duration::pretty_duration;
 use ratatui::{prelude::*, widgets::*};
@@ -16,7 +16,7 @@ use std::time::Duration;
 use meshtastic::protobufs;
 use meshtastic::protobufs::PortNum::TracerouteApp;
 use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
-use tui_logger::set_level_for_target;
+
 use crate::ipc::IPCMessage;
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -64,7 +64,7 @@ impl ComprehensiveNode {
 
 impl NodesTab {
     pub async fn run(&mut self) {
-        if self.prefs.initialized.len() == 0 {
+        if self.prefs.initialized.is_empty() {
             let prefs = PREFERENCES.try_read().unwrap();
             self.prefs = prefs.clone();
         }
@@ -73,12 +73,12 @@ impl NodesTab {
         // We sort by last heard, in reverse order, so that the most recent update is at the top.
         self.table_contents = self.node_list.values().cloned().collect();
 
-        if self.prefs.show_mqtt == false {
+        if !self.prefs.show_mqtt {
             self.table_contents = self
                 .table_contents
                 .iter()
                 .filter_map(|cn| {
-                    if cn.clone().node_info.via_mqtt == false {
+                    if !cn.clone().node_info.via_mqtt {
                         Some(cn.to_owned())
                     } else {
                         None
@@ -302,7 +302,7 @@ impl NodesTab {
         if let Some(routes) = cn.route_list.get(&me.id) {
             let mut whole_route: String = "Unknown".to_string();
 
-            if routes.len() == 0 {
+            if routes.is_empty() {
                 whole_route = format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id);
             } else {
                 let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join(" -> ");
@@ -457,7 +457,7 @@ impl Widget for NodesTab {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
         // since this fn is operating on a copy of the messagestab struct, there
         // were only a few ways I could handle perpetuating the page size for PgUp/PgDn.
-        let mut page_size;
+        let page_size;
         {
             page_size = *PAGE_SIZE.try_read().unwrap();
         }
@@ -495,7 +495,7 @@ impl Widget for NodesTab {
 
 
                 //let popup_area = crate::app::centered_rect(area, 100, 61);
-                Widget::render(Clear::default(), area, buf);
+                Widget::render(Clear, area, buf);
                 Widget::render(popup_block, area, buf);
                 self.get_details_for_node(area, buf);
             }
@@ -531,10 +531,10 @@ impl Widget for NodesTab {
                     .table_contents
                     .iter()
                     .map(|cn| {
-                        let mut add_this_entry: bool = true;
+                        let _add_this_entry: bool = true;
                         let mut user_id_str = "Unknown".to_string();
-                        let user = cn.clone().node_info.user.unwrap_or_else(|| User::default());
-                        if user.id.len() > 0 {
+                        let user = cn.clone().node_info.user.unwrap_or_default();
+                        if !user.id.is_empty() {
                             if cn.id == self.my_node_id {
                                 user_id_str = format!("^{:x}", cn.id);
                             } else {
@@ -547,12 +547,12 @@ impl Widget for NodesTab {
                             .clone()
                             .node_info
                             .device_metrics
-                            .unwrap_or_else(|| DeviceMetrics::default());
-                        let mut position = cn
+                            .unwrap_or_default();
+                        let position = cn
                             .clone()
                             .node_info
                             .position
-                            .unwrap_or_else(|| Position::default());
+                            .unwrap_or_default();
 
                         let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
                         let station_lon = position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
@@ -598,7 +598,7 @@ impl Widget for NodesTab {
 
                         let mut altitude_str = "".to_string();
                         if position.altitude.ne(&0) {
-                            altitude_str = format!("{}m", position.altitude.to_string());
+                            altitude_str = format!("{}m", position.altitude);
                         };
 
                         let mut voltage_str = "".to_string();
@@ -625,7 +625,7 @@ impl Widget for NodesTab {
                                     format!("SNR:{:.2}dB / RSSI:{:.0}dB", cn.last_snr, cn.last_rssi);
                             }
                         } else {
-                            rf_str = format!("MQTT");
+                            rf_str = "MQTT".to_string();
                         }
                         let neigh_str = format!("{}", cn.neighbors.len());
 

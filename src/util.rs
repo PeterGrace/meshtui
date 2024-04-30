@@ -19,11 +19,11 @@ pub fn get_channel_from_id(id: u32) -> Option<Channel> {
                 let channel = cfg.channels.get(&(id as i32));
                 return channel.cloned();
             };
-            return None
+            None
         },
-        Err(e) => {
+        Err(_e) => {
             warn!("Couldn't lock config for shared read, so, channel lookup failed.");
-            return None;
+            None
         }
     }
 

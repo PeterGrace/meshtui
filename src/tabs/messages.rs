@@ -1,10 +1,10 @@
 use crate::app::Mode;
 use crate::packet_handler::MessageEnvelope;
 use crate::theme::THEME;
-use crate::{consts, util, PAGE_SIZE};
+use crate::{consts, PAGE_SIZE};
 use circular_buffer::CircularBuffer;
 use itertools::Itertools;
-use meshtastic::protobufs::{NodeInfo, User};
+
 use ratatui::{prelude::*, widgets::*};
 use time::OffsetDateTime;
 use crate::util::get_channel_from_id;
@@ -94,7 +94,7 @@ impl Widget for MessagesTab {
     fn render(mut self, area: Rect, buf: &mut Buffer) {
         // since this fn is operating on a copy of the messagestab struct, there
         // were only a few ways I could handle perpetuating the page size for PgUp/PgDn.
-        let mut page_size;
+        let page_size;
         {
             page_size = *PAGE_SIZE.try_read().unwrap();
         }
@@ -127,7 +127,7 @@ impl Widget for MessagesTab {
                     None=> "".to_string()
                 };
 
-                let mut destination_str = format!("{} (Ch. {})", channel_name, &message.channel);
+                let destination_str = format!("{} (Ch. {})", channel_name, &message.channel);
 
                 Row::new(vec![
                     format!("{}", dt.format(consts::DATE_FORMAT).unwrap()),

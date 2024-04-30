@@ -2,11 +2,11 @@ use crate::ipc::IPCMessage;
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::{DEVICE_CONFIG, util};
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery, Config, LogRecord};
+use meshtastic::protobufs::{from_radio, mesh_packet, routing, telemetry, NeighborInfo, NodeInfo, PortNum, Position, Routing, User, RouteDiscovery};
 use meshtastic::types::MeshChannel;
 use meshtastic::Message;
 use std::collections::HashMap;
-use meshtastic::protobufs::config::{DeviceConfig, PayloadVariant};
+use meshtastic::protobufs::config::{PayloadVariant};
 use meshtastic::protobufs::module_config::PayloadVariant as mpv;
 use meshtastic::protobufs::log_record::Level;
 use crate::app::DeviceConfiguration;
@@ -53,7 +53,7 @@ pub async fn process_packet(
                                             cn.clone()
                                                 .node_info
                                                 .user
-                                                .unwrap_or_else(|| User::default())
+                                                .unwrap_or_else(User::default)
                                                 .id,
                                             pa.from
                                         );
@@ -91,7 +91,7 @@ pub async fn process_packet(
                                                         cn.clone()
                                                             .node_info
                                                             .user
-                                                            .unwrap_or_else(|| User::default())
+                                                            .unwrap_or_else(User::default)
                                                             .id,
                                                         pa.from
                                                     );
@@ -157,7 +157,7 @@ pub async fn process_packet(
                                             "Received node info update for {} ({})",
                                             data.id, pa.from
                                         );
-                                        let nid = u32::from_str_radix(data.id.clone().trim_start_matches("!"), 16).unwrap_or(0_u32);
+                                        let nid = u32::from_str_radix(data.id.clone().trim_start_matches('!'), 16).unwrap_or(0_u32);
                                         if nid == 0 {
                                             error!("Received a node update but the node string ({}) is not parseable hexadecimal",data.id.clone());
                                             return None;
@@ -211,7 +211,7 @@ pub async fn process_packet(
                                     }
 
                                     PortNum::TextMessageApp => {
-                                        if let Some(message) = String::from_utf8(de.payload).ok() {
+                                        if let Ok(message) = String::from_utf8(de.payload) {
                                             let source_ni = match node_list.get(&pa.from) {
                                                 Some(s) => s.clone().node_info,
                                                 None => {
@@ -238,7 +238,7 @@ pub async fn process_packet(
                                                     source: Some(source_ni),
                                                     destination: destinated,
                                                     channel: MeshChannel::from(pa.channel),
-                                                    message: message,
+                                                    message,
                                                     rx_rssi: pa.rx_rssi,
                                                     rx_snr: pa.rx_snr,
                                                 },
@@ -276,7 +276,7 @@ pub async fn process_packet(
                 from_radio::PayloadVariant::NodeInfo(ni) => {
                     info!(
                         "Updating NodeInfo for {} ({})",
-                        ni.clone().user.unwrap_or_else(|| User::default()).id,
+                        ni.clone().user.unwrap_or_else(User::default).id,
                         ni.num
                     );
                     let mut cn = ComprehensiveNode::with_id(ni.num);
@@ -384,7 +384,7 @@ pub async fn process_packet(
                         }
                         let mut devcfg = f.clone().unwrap();
                         if c.index == 0
-                            && channel.name.len() == 0
+                            && channel.name.is_empty()
                             && channel.psk == [1]
                         {
                             channel.name = "LongFast (Default)".to_string();
@@ -420,5 +420,5 @@ pub async fn process_packet(
         }
         return None;
     };
-    return None;
+    None
 }

@@ -1,10 +1,10 @@
 use meshtastic::protobufs::Channel;
 use strum::Display;
-use crate::app::{DeviceConfiguration, Mode};
+use crate::app::{Mode};
 use crate::theme::THEME;
 use ratatui::{prelude::*, widgets::*};
 use crate::{DEVICE_CONFIG, PAGE_SIZE};
-use crate::tabs::nodes::DisplayMode;
+
 
 #[derive(Debug, Clone, Display, Default)]
 enum ChannelDisplayMode {

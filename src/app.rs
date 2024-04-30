@@ -10,11 +10,11 @@ use crate::tui::Event;
 use crate::{tui, util};
 use anyhow::Result;
 use color_eyre::eyre::WrapErr;
-use crossterm::event::{KeyCode, MouseEventKind};
+use crossterm::event::{KeyCode};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{Channel, Data, MeshPacket, ToRadio};
+use meshtastic::protobufs::{Channel};
 use meshtastic::types::MeshChannel;
 use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
@@ -22,15 +22,15 @@ use ratatui::{
     widgets::{Block, Borders, Tabs},
 };
 use std::io;
-use meshtastic::protobufs;
+
 use meshtastic::protobufs::config::*;
 use meshtastic::protobufs::module_config::*;
-use meshtastic::protobufs::PortNum::TracerouteApp;
-use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
+
+
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
+
 use tokio::task::JoinHandle;
 use tui_logger::TuiLoggerWidget;
 
@@ -369,7 +369,7 @@ impl App {
                 self.input_mode = InputMode::Editing;
             }
             InputMode::Editing => {
-                if self.input.len() > 0 {
+                if !self.input.is_empty() {
                     info!("Sending message {} to LongFast", self.input.clone());
                     let message = MessageEnvelope {
                         timestamp: 0,
@@ -502,7 +502,7 @@ impl App {
             MenuTabs::Channels => self.channels_tab.clone().render(area, buf),
             MenuTabs::DeviceConfig => self.device_config_tab.clone().render(area, buf),
             MenuTabs::ModulesConfig => self.modules_config_tab.clone().render(area, buf),
-            MenuTabs::About => self.about_tab.clone().render(area, buf),
+            MenuTabs::About => self.about_tab.render(area, buf),
             _ => {}
         }
     }

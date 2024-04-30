@@ -1,12 +1,12 @@
 use crate::app::Connection;
 use crate::ipc::IPCMessage;
 use anyhow::{bail, Result};
-use color_eyre::eyre::private::kind::TraitKind;
-use color_eyre::owo_colors::OwoColorize;
-use meshtastic::api::state::Connected;
-use meshtastic::api::ConnectedStreamApi;
-use meshtastic::packet::{PacketReceiver, PacketRouter};
-use meshtastic::protobufs::config::device_config::Role::Router;
+
+
+
+
+use meshtastic::packet::{PacketRouter};
+
 use meshtastic::protobufs::{FromRadio, MeshPacket};
 use meshtastic::types::NodeId;
 use meshtastic::{api::StreamApi, utils};
@@ -39,7 +39,7 @@ impl MyPacketRouter {
 impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
     fn handle_packet_from_radio(
         &mut self,
-        packet: FromRadio,
+        _packet: FromRadio,
     ) -> std::result::Result<(), DeviceUpdateError> {
         debug!("handle_packet_from_radio called but not sure what to do");
         Ok(())
@@ -47,7 +47,7 @@ impl PacketRouter<(), DeviceUpdateError> for MyPacketRouter {
 
     fn handle_mesh_packet(
         &mut self,
-        packet: MeshPacket,
+        _packet: MeshPacket,
     ) -> std::result::Result<(), DeviceUpdateError> {
         debug!("handle_mesh_packet called but not sure what to do here");
         Ok(())
@@ -65,7 +65,7 @@ pub(crate) async fn meshtastic_loop(
 ) -> Result<()> {
     let stream_api = StreamApi::new();
     let mut decoded_listener;
-    let mut connected_stream_api;
+    let connected_stream_api;
     match connection {
         Connection::TCP(ip, port) => {
             let tcp_stream = match utils::stream::build_tcp_stream(format!("{ip}:{port}")).await {

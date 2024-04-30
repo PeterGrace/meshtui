@@ -3,10 +3,10 @@ use crate::theme::THEME;
 use ratatui::{prelude::*, widgets::*};
 use strum::{Display, EnumIter, FromRepr, IntoEnumIterator};
 use crate::DEVICE_CONFIG;
-use crate::util::{get_secs, send_to_radio};
-use itertools::Itertools;
-use meshtastic::protobufs::{to_radio, ToRadio};
-use crate::ipc::IPCMessage;
+
+
+
+
 
 #[derive(Debug, Clone, Default)]
 pub struct ModulesConfigTab {
