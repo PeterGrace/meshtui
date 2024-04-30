@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::consts;
 use crate::ipc::IPCMessage;
 use crate::meshtastic_interaction::meshtastic_loop;
@@ -13,7 +14,7 @@ use crossterm::event::{KeyCode, MouseEventKind};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::{Data, MeshPacket, ToRadio};
+use meshtastic::protobufs::{Channel, Data, MeshPacket, ToRadio};
 use meshtastic::types::MeshChannel;
 use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
@@ -38,6 +39,7 @@ pub struct App {
     pub mode: Mode,
     pub tab: MenuTabs,
     pub nodes_tab: NodesTab,
+    pub channels_tab: ChannelsTab,
     pub device_config_tab: ConfigTab,
     pub modules_config_tab: ModulesConfigTab,
     pub messages_tab: MessagesTab,
@@ -103,6 +105,7 @@ impl App {
         self.mode = match self.tab {
             MenuTabs::Nodes => self.nodes_tab.escape(),
             MenuTabs::Messages => self.messages_tab.escape(),
+            MenuTabs::Channels => self.channels_tab.escape(),
             MenuTabs::DeviceConfig => self.device_config_tab.escape(),
             MenuTabs::ModulesConfig => self.modules_config_tab.escape(),
             MenuTabs::About => self.about_tab.escape(),
@@ -113,6 +116,7 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.function_key(num).await,
             MenuTabs::Messages => self.messages_tab.function_key(num),
+            MenuTabs::Channels => self.channels_tab.function_key(num).await,
             MenuTabs::DeviceConfig => self.device_config_tab.function_key(num),
             MenuTabs::ModulesConfig => self.modules_config_tab.function_key(num),
             _ => {}
@@ -149,6 +153,7 @@ impl App {
             match self.tab {
                 MenuTabs::Nodes => self.nodes_tab.run().await,
                 MenuTabs::Messages => self.messages_tab.run().await,
+                MenuTabs::Channels => self.channels_tab.run().await,
                 MenuTabs::DeviceConfig => self.device_config_tab.run().await,
                 MenuTabs::ModulesConfig => self.modules_config_tab.run().await,
                 _ => {}
@@ -318,6 +323,7 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_row(),
             MenuTabs::Messages => self.messages_tab.prev_row(),
+            MenuTabs::Channels => self.channels_tab.prev_row(),
             MenuTabs::DeviceConfig => self.device_config_tab.prev_row(),
             MenuTabs::ModulesConfig => self.modules_config_tab.prev_row(),
             MenuTabs::About => self.about_tab.prev_row(),
@@ -339,6 +345,7 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.next_row(),
             MenuTabs::Messages => self.messages_tab.next_row(),
+            MenuTabs::Channels => self.channels_tab.next_row(),
             MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
             MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
             MenuTabs::About => self.about_tab.next_row(),
@@ -387,9 +394,7 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.enter_key(),
             MenuTabs::Messages => self.enter_key_messages().await,
-            MenuTabs::DeviceConfig => self.device_config_tab.next_row(),
-            MenuTabs::ModulesConfig => self.modules_config_tab.next_row(),
-            MenuTabs::About => self.about_tab.next_row(),
+            MenuTabs::Channels => self.channels_tab.enter_key(),
             _ => {}
         }
     }
@@ -494,6 +499,7 @@ impl App {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.clone().render(area, buf),
             MenuTabs::Messages => self.messages_tab.clone().render(area, buf),
+            MenuTabs::Channels => self.channels_tab.clone().render(area, buf),
             MenuTabs::DeviceConfig => self.device_config_tab.clone().render(area, buf),
             MenuTabs::ModulesConfig => self.modules_config_tab.clone().render(area, buf),
             MenuTabs::About => self.about_tab.clone().render(area, buf),
@@ -554,6 +560,7 @@ pub enum MenuTabs {
     #[default]
     Messages,
     Nodes,
+    Channels,
     DeviceConfig,
     ModulesConfig,
     About,
@@ -608,5 +615,6 @@ pub struct DeviceConfiguration {
     pub ambient_lighting: AmbientLightingConfig,
     pub detection_sensor: DetectionSensorConfig,
     pub paxcounter: PaxcounterConfig,
+    pub channels: HashMap<i32, Channel>,
     pub last_update: u64,
 }

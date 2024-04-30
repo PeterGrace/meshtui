@@ -1,6 +1,5 @@
 use crate::app::Mode;
 use crate::packet_handler::MessageEnvelope;
-use crate::tabs::nodes::ComprehensiveNode;
 use crate::theme::THEME;
 use crate::{consts, util, PAGE_SIZE};
 use circular_buffer::CircularBuffer;
@@ -8,6 +7,7 @@ use itertools::Itertools;
 use meshtastic::protobufs::{NodeInfo, User};
 use ratatui::{prelude::*, widgets::*};
 use time::OffsetDateTime;
+use crate::util::get_channel_from_id;
 
 #[derive(Debug, Clone, Default)]
 pub struct MessagesTab {
@@ -121,7 +121,13 @@ impl Widget for MessagesTab {
             .map(|message| {
                 let dt =
                     OffsetDateTime::from_unix_timestamp(message.clone().timestamp as i64).unwrap();
-                let mut destination_str = format!("Ch. {}", &message.channel);
+
+                let channel_name = match get_channel_from_id(message.channel.channel()) {
+                    Some(s) => s.settings.unwrap().name.clone(),
+                    None=> "".to_string()
+                };
+
+                let mut destination_str = format!("{} (Ch. {})", channel_name, &message.channel);
 
                 Row::new(vec![
                     format!("{}", dt.format(consts::DATE_FORMAT).unwrap()),

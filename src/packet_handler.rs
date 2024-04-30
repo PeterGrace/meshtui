@@ -375,7 +375,28 @@ pub async fn process_packet(
                 from_radio::PayloadVariant::ConfigCompleteId(u) => {
                     info!("We've received all config from the device! (Checksum {})", u);
                 }
-                // from_radio::PayloadVariant::Channel(_) => {}
+                from_radio::PayloadVariant::Channel(c) => {
+                    let mut channelpacket = c.clone();
+                    if let Some(mut channel) = channelpacket.settings.clone() {
+                        let mut f = DEVICE_CONFIG.write().await;
+                        if f.is_none() {
+                            *f = Some(DeviceConfiguration::default());
+                        }
+                        let mut devcfg = f.clone().unwrap();
+                        if c.index == 0
+                            && channel.name.len() == 0
+                            && channel.psk == [1]
+                        {
+                            channel.name = "LongFast (Default)".to_string();
+                        };
+                        channelpacket.settings = Some(channel.clone());
+                        info!("Storing channel config for {} (Ch: {})",channel.name, c.index);
+                        devcfg.channels.insert(c.index, channelpacket.clone());
+
+                        devcfg.last_update = get_secs();
+                        *f = Some(devcfg);
+                    }
+                }
                 from_radio::PayloadVariant::QueueStatus(v) => {
                     debug!("QueueStatus: res {}/free {}/maxlen {}/mesh_packet_id {}",v.res, v.free, v.maxlen, v.mesh_packet_id);
                     return None;
