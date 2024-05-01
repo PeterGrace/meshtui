@@ -1,0 +1,17 @@
+on:
+  workflow_dispatch:
+name: Flatpak-Builder
+jobs:
+  flatpak:
+    name: "Flatpak"
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-44
+      options: --privileged
+    steps:
+    - uses: actions/checkout@v4
+    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: meshtui.flatpak
+        manifest-path: dev.gfpd.meshtui.yaml
+        cache-key: flatpak-builder-${{ github.sha }}
