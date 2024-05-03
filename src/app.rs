@@ -111,6 +111,9 @@ impl App {
         }
     }
     async fn function_key(&mut self, num: u8) {
+        if num == 12 {
+            self.mode = Mode::RestartComms;
+        }
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.function_key(num).await,
             MenuTabs::Messages => self.messages_tab.function_key(num),
@@ -147,6 +150,12 @@ impl App {
         });
 
         while self.is_running() {
+            // check if we requested a comm restart
+            if self.mode == Mode::RestartComms {
+                join_handle.abort();
+                self.mode = Mode::Running;
+            }
+
             // execute runs, if needed
             match self.tab {
                 MenuTabs::Nodes => self.nodes_tab.run().await,
@@ -245,38 +254,27 @@ impl App {
 
             // tend to our threads
             if join_handle.is_finished() {
-                match join_handle.await {
-                    Ok(r) => match r {
-                        Ok(_) => {
-                            unreachable!()
-                        }
-                        Err(e) => {
-                            error!("Comms thread exited, restarting.  Err: {e}");
-                            (fromradio_thread_tx, fromradio_thread_rx) =
-                                mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-                            (toradio_thread_tx, toradio_thread_rx) =
-                                mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
-                            let fromradio_tx = fromradio_thread_tx.clone();
-                            {
-                                let mut trm = crate::TO_RADIO_MPSC.write().await;
-                                *trm = Some(toradio_thread_tx.clone());
-                            }
-                            let conn = self.connection.clone();
-                            join_handle = tokio::task::spawn(async move {
-                                meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await
-                            });
-                        }
-                    },
-                    Err(e) => {
-                        panic!("JoinError: {e}");
-                    }
+                (fromradio_thread_tx, fromradio_thread_rx) =
+                    mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                (toradio_thread_tx, toradio_thread_rx) =
+                    mpsc::channel::<IPCMessage>(consts::MPSC_BUFFER_SIZE);
+                let fromradio_tx = fromradio_thread_tx.clone();
+                {
+                    let mut trm = crate::TO_RADIO_MPSC.write().await;
+                    *trm = Some(toradio_thread_tx.clone());
                 }
+                let conn = self.connection.clone();
+                join_handle = tokio::task::spawn(async move {
+                    meshtastic_loop(conn, fromradio_tx, toradio_thread_rx).await
+                });
             }
         }
+
         let _ = tui.exit(); // stops event handler, exits raw mode, exits alternate screen
         join_handle.abort();
         Ok(())
     }
+
     fn draw(&self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
         terminal
             .draw(|frame| {
@@ -303,6 +301,7 @@ impl App {
             _ => {}
         }
     }
+
     fn right(&mut self) {
         match self.tab {
             MenuTabs::DeviceConfig => self.device_config_tab.right(),
@@ -310,6 +309,7 @@ impl App {
             _ => {}
         }
     }
+
     fn prev(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_row(),
@@ -320,6 +320,7 @@ impl App {
             MenuTabs::About => self.about_tab.prev_row(),
         }
     }
+
     fn prev_page(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.prev_page(),
@@ -341,6 +342,7 @@ impl App {
             MenuTabs::About => self.about_tab.next_row(),
         }
     }
+
     fn next_page(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.nodes_tab.next_page(),
@@ -535,6 +537,7 @@ pub enum Mode {
     #[default]
     Running,
     Exiting,
+    RestartComms,
 }
 
 #[derive(Debug, Clone, Copy, Default, Display, EnumIter, FromRepr, PartialEq, Eq)]
