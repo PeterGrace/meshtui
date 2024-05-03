@@ -1,4 +1,4 @@
-use crate::app::{Mode, Preferences};
+use crate::app::{MenuTabs, Mode, Preferences};
 use crate::consts::GPS_PRECISION_FACTOR;
 use crate::theme::THEME;
 use crate::util::get_secs;
@@ -16,6 +16,8 @@ use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
+use circular_buffer::CircularBuffer;
+use strum::Display;
 
 use crate::ipc::IPCMessage;
 
@@ -37,11 +39,59 @@ pub struct NodesTab {
     pub my_node_id: u32,
     prefs: Preferences,
     pub display_mode: DisplayMode,
-    pub selected_node: ComprehensiveNode,
+    pub selected_node_id: u32,
     pub page_size: u16,
+    pub which_graph: DisplayedGraph
+}
+#[derive(Default, Debug, Display, Clone)]
+pub enum DisplayedGraph {
+    #[default]
+    Battery,
+    Voltage,
+    AirUtilization,
+    ChannelUtilization,
+    RSSI,
+    SNR,
+    Temperature,
+    RelativeHumidity,
+    BarometricPressure,
+    GasResistance,
+}
+impl DisplayedGraph {
+    fn prev(&self) -> Self {
+        use DisplayedGraph::*;
+        match *self {
+            Battery => GasResistance,
+            Voltage => Battery,
+            AirUtilization => Voltage,
+            ChannelUtilization => AirUtilization,
+            RSSI => ChannelUtilization,
+            SNR => RSSI,
+            Temperature => SNR,
+            RelativeHumidity => Temperature,
+            BarometricPressure => RelativeHumidity,
+            GasResistance => BarometricPressure
+
+        }
+    }
+    fn next(&self) -> Self {
+        use DisplayedGraph::*;
+        match *self {
+            Battery => Voltage,
+            Voltage => AirUtilization,
+            AirUtilization => ChannelUtilization,
+            ChannelUtilization => RSSI,
+            RSSI => SNR,
+            SNR => Temperature,
+            Temperature => RelativeHumidity,
+            RelativeHumidity => BarometricPressure,
+            BarometricPressure => GasResistance,
+            GasResistance => Battery,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct ComprehensiveNode {
     pub id: u32,
     pub node_info: NodeInfo,
@@ -50,6 +100,20 @@ pub struct ComprehensiveNode {
     pub last_snr: f32,
     pub last_rssi: i32,
     pub route_list: HashMap<u32, Vec<u32>>,
+    pub timeseries: CircularBuffer<{ consts::MAX_MSG_RETENTION }, TimeSeriesData>,
+    pub timeseries_start: u64,
+}
+
+
+#[derive(Debug, Clone, Default)]
+pub struct TimeSeriesData {
+    pub timestamp: u64,
+    pub device: DeviceMetrics,
+    pub environment: EnvironmentMetrics,
+    pub air_quality: AirQualityMetrics,
+    pub power: PowerMetrics,
+    pub rssi: f64,
+    pub snr: f64
 }
 
 impl ComprehensiveNode {
@@ -107,7 +171,7 @@ impl NodesTab {
     }
     pub(crate) fn get_details_for_node(&self, area: Rect, buf: &mut Buffer) {
         let me = self.node_list.get(&self.my_node_id).unwrap();
-        let cn = self.selected_node.clone();
+        let cn = self.node_list.get(&self.selected_node_id).cloned().unwrap();
 
         //region layout and block pre-game
         let left_side_constraints = vec![Constraint::Max(30), Constraint::Max(30)];
@@ -124,7 +188,7 @@ impl NodesTab {
             .title_alignment(Alignment::Center)
             .border_set(symbols::border::ROUNDED)
             .style(THEME.middle);
-        let left_block = default_inner_block.clone().title("Basics");
+        let left_top_block = default_inner_block.clone().title("Basics");
         let right_top_block = default_inner_block.clone().title("Neighbors");
         let right_bottom_block = default_inner_block.clone().title("Traceroute");
 
@@ -133,6 +197,11 @@ impl NodesTab {
             .constraints(crate::FIFTY_FIFTY.iter())
             .margin(1)
             .areas(area);
+
+        let [left_top, left_bottom] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(crate::FIFTY_FIFTY.iter())
+            .areas(left_side);
 
         let [right_top_layout, right_bottom_layout] = Layout::default()
             .direction(Direction::Vertical)
@@ -229,6 +298,7 @@ impl NodesTab {
             }
         }
         //endregion
+        //endregion
 
         //region Position-struct display fields
         if let Some(position) = cn.node_info.position {
@@ -259,11 +329,13 @@ impl NodesTab {
         Widget::render(
             Table::new(rows, left_side_constraints)
                 .highlight_style(THEME.tabs_selected)
-                .block(left_block),
-            left_side,
+                .block(left_top_block),
+            left_top,
             buf,
         );
-        //endregion
+
+        self.make_graph(left_bottom, buf);
+
 
         //region right-top
         let mut right_top_rows: Vec<Row> = vec![];
@@ -327,15 +399,132 @@ impl NodesTab {
         );
         //endregion
     }
+    pub fn make_graph(&self, area: Rect, buf: &mut Buffer) {
+        // chart time
+        use DisplayedGraph::*;
+        let cn = self.node_list.get(&self.selected_node_id).cloned().unwrap();
+        let mut data: Vec<(f64,f64)>;
+        let graph_name: String;
+        let y_axis_unit: String;
+        match self.which_graph {
+            Battery => {
+                graph_name = "Battery".to_string();
+                y_axis_unit = "Percent (%)".to_string();
+                data = cn.timeseries.iter().map(|d| {
+                    (d.timestamp as f64, d.device.battery_level as f64)
+                }).collect();
+            }
+            Voltage => {
+                graph_name = "Device Voltage".to_string();
+                y_axis_unit = "Volts (V)".to_string();
+                data = cn.timeseries.iter().map(|d| {
+                    (d.timestamp as f64, d.device.voltage as f64)
+                }).collect();
+            }
+            AirUtilization => {
+                graph_name = "Air Utilization".to_string();
+                y_axis_unit = "Percent (%)".to_string();
+                data = cn.timeseries.iter().map(|d| {
+                    (d.timestamp as f64, d.device.air_util_tx as f64)
+                }).collect();
+            }
+            ChannelUtilization => {
+                graph_name = "Channel Utilization".to_string();
+                y_axis_unit = "Percent (%)".to_string();
+                data = cn.timeseries.iter().map(|d| {
+                    (d.timestamp as f64, d.device.channel_utilization as f64)
+                }).collect()
+
+            }
+            RSSI => {
+                graph_name = "RSSI".to_string();
+                y_axis_unit = "decibels (dB)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.rssi)).collect()
+            },
+            SNR => {
+                graph_name = "SNR".to_string();
+                y_axis_unit = "decibels (dB)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.snr)).collect()
+            },
+            Temperature => {
+                graph_name = "Temperature".to_string();
+                y_axis_unit = "Celsius (C)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.temperature as f64)).collect()
+            }
+            RelativeHumidity => {
+                graph_name = "Relative Humidity".to_string();
+                y_axis_unit = "Percent (%)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.relative_humidity as f64)).collect()
+            }
+            BarometricPressure => {
+                graph_name = "Barometric Pressure".to_string();
+                y_axis_unit = "millibars (mb)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.barometric_pressure as f64)).collect()
+            }
+            GasResistance => {
+                graph_name = "Gas Resistance".to_string();
+                y_axis_unit = "milliohms (mΩ)".to_string();
+                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.gas_resistance as f64)).collect()
+            }
+        };
+        // if our dataset has exact 0.0 entries, the chances are astronomically high that the
+        // value was put there by Default::default() instead of an actual data read.
+        data.retain(|(_,  datum)| datum > &0.0);
+
+        let dataset = Dataset::default()
+            .marker(symbols::Marker::Braille)
+            .name(graph_name)
+            .graph_type(GraphType::Line)
+            .style(THEME.tabs_selected)
+            .data(data.as_slice());
+
+
+        let x_bound: Vec<f64> = data.iter().map(|(ts, _)| {
+            *ts
+        }).collect();
+        let x_low = *x_bound.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
+        let x_high = *x_bound.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
+
+        let y_bound: Vec<f64> = data.iter().map(|(_,c)| *c).collect();
+        let y_low = *y_bound.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
+        let y_high = *y_bound.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title_alignment(Alignment::Center)
+            .border_set(symbols::border::ROUNDED)
+            .title("Telemetry")
+            .style(THEME.middle);
+
+        let x_axis = Axis::default()
+            .title("unixtime")
+            .style(THEME.tabs_selected)
+            .bounds([x_low, x_high])
+            .labels(vec![Span::raw(x_low.to_string()), Span::raw(x_high.to_string())]);
+        let y_axis = Axis::default()
+            .title(y_axis_unit)
+            .style(THEME.tabs_selected)
+            .bounds([y_low, y_high])
+            .labels(vec![Span::raw(format!("{:.2}",y_low)),Span::raw(format!("{:.2}",y_high))]);
+        Widget::render(
+            Chart::new(vec![dataset])
+                .style(THEME.middle)
+                .block(block)
+                .x_axis(x_axis)
+                .y_axis(y_axis),
+            area,
+            buf,
+        );
+    }
 
     pub async fn send_traceroute(&mut self) {
         if let Some(index) = self.table_state.selected() {
-            self.selected_node = self.table_contents[index].clone();
+            self.selected_node_id = self.table_contents[index].clone().id;
 
             #[allow(deprecated)]
-            let mesh_packet = MeshPacket {
+                let mesh_packet = MeshPacket {
                 from: 0,
-                to: self.selected_node.id,
+                to: self.selected_node_id,
                 channel: 0,
                 id: 0,
                 rx_time: 0,
@@ -364,7 +553,7 @@ impl NodesTab {
             {
                 error!("Tried sending traceroute but failed: {e}");
             } else {
-                info!("Emitted Traceroute Request to !{:x}", self.selected_node.id);
+                info!("Emitted Traceroute Request to !{:x}", self.selected_node_id);
             }
         }
     }
@@ -385,7 +574,7 @@ impl NodesTab {
         match self.display_mode {
             DisplayMode::List => {
                 if let Some(index) = self.table_state.selected() {
-                    self.selected_node = self.table_contents[index].clone();
+                    self.selected_node_id = self.table_contents[index].clone().id;
                     self.display_mode = DisplayMode::Detail
                 }
             }
@@ -394,60 +583,68 @@ impl NodesTab {
         }
     }
     pub fn prev_row(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.table_contents.len().saturating_sub(1)
-                } else {
-                    i.saturating_sub(1)
+        if self.display_mode == DisplayMode::List {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i == 0 {
+                        self.table_contents.len().saturating_sub(1)
+                    } else {
+                        i.saturating_sub(1)
+                    }
                 }
-            }
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-        self.scrollbar_state = self.scrollbar_state.position(i);
+                None => 0,
+            };
+            self.table_state.select(Some(i));
+            self.scrollbar_state = self.scrollbar_state.position(i);
+        }
     }
 
     pub fn next_row(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i >= self.table_contents.len().saturating_sub(1) {
-                    0
-                } else {
-                    i.saturating_add(1)
+        if self.display_mode == DisplayMode::List {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i >= self.table_contents.len().saturating_sub(1) {
+                        0
+                    } else {
+                        i.saturating_add(1)
+                    }
                 }
-            }
-            None => 0,
-        };
-        self.table_state.select(Some(i));
-        self.scrollbar_state = self.scrollbar_state.position(i);
+                None => 0,
+            };
+            self.table_state.select(Some(i));
+            self.scrollbar_state = self.scrollbar_state.position(i);
+        }
     }
     pub fn next_page(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i >= self.node_list.len().saturating_sub(self.page_size as usize) {
-                    self.node_list.len() - 1
-                } else {
-                    i.saturating_add(self.page_size as usize)
+        if self.display_mode == DisplayMode::List {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i >= self.node_list.len().saturating_sub(self.page_size as usize) {
+                        self.node_list.len() - 1
+                    } else {
+                        i.saturating_add(self.page_size as usize)
+                    }
                 }
-            }
-            None => 0,
-        };
-        debug!("i is {i}");
-        self.table_state.select(Some(i));
+                None => 0,
+            };
+            debug!("i is {i}");
+            self.table_state.select(Some(i));
+        }
     }
     pub fn prev_page(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i <= self.page_size as usize {
-                    0
-                } else {
-                    i.saturating_sub(self.page_size as usize)
+        if self.display_mode == DisplayMode::List {
+            let i = match self.table_state.selected() {
+                Some(i) => {
+                    if i <= self.page_size as usize {
+                        0
+                    } else {
+                        i.saturating_sub(self.page_size as usize)
+                    }
                 }
-            }
-            None => 0,
-        };
-        self.table_state.select(Some(i));
+                None => 0,
+            };
+            self.table_state.select(Some(i));
+        }
     }
     pub async fn function_key(&mut self, num: u8) {
         match num {
@@ -666,8 +863,8 @@ impl Widget for NodesTab {
                     "Last Heard NodeInfo",
                     "Last Update",
                 ])
-                .set_style(THEME.message_header)
-                .bottom_margin(1);
+                    .set_style(THEME.message_header)
+                    .bottom_margin(1);
 
                 let block = Block::new()
                     .borders(Borders::ALL)

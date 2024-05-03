@@ -1,6 +1,6 @@
 use crate::app::DeviceConfiguration;
 use crate::ipc::IPCMessage;
-use crate::tabs::nodes::ComprehensiveNode;
+use crate::tabs::nodes::{ComprehensiveNode, TimeSeriesData};
 use crate::util::get_secs;
 use crate::{util, DEVICE_CONFIG};
 use meshtastic::packet::PacketDestination;
@@ -76,6 +76,39 @@ pub async fn process_packet(
                                         .unwrap();
                                         if let Some(v) = data.variant {
                                             match v {
+                                                telemetry::Variant::EnvironmentMetrics(env) => {
+                                                    let mut cn = match node_list
+                                                        .contains_key(&pa.from)
+                                                    {
+                                                        true => node_list
+                                                            .get(&pa.from)
+                                                            .unwrap()
+                                                            .to_owned(),
+                                                        false => {
+                                                            ComprehensiveNode::with_id(pa.from)
+                                                        }
+                                                    };
+                                                    info!("Received EnvironmentalMetrics from !{:x} ({})", pa.from, pa.from);
+                                                    cn.timeseries.push_back(
+                                                        TimeSeriesData {
+                                                            timestamp: get_secs(),
+                                                            environment: env.clone(),
+                                                            rssi: pa.rx_rssi as f64,
+                                                            snr: pa.rx_snr as f64,
+                                                            ..Default::default()
+                                                        });
+                                                    if cn.timeseries_start == 0 {
+                                                        cn.timeseries_start = get_secs();
+                                                    };
+                                                    cn.last_seen = util::get_secs();
+                                                    cn.last_rssi = pa.rx_rssi;
+                                                    cn.last_snr = pa.rx_snr;
+                                                    return Some(PacketResponse::NodeUpdate(
+                                                        cn.node_info.num,
+                                                        Box::new(cn),
+                                                    ));
+                                                    
+                                                }
                                                 telemetry::Variant::DeviceMetrics(dm) => {
                                                     let mut cn = match node_list
                                                         .contains_key(&pa.from)
@@ -85,8 +118,7 @@ pub async fn process_packet(
                                                             .unwrap()
                                                             .to_owned(),
                                                         false => {
-                                                            warn!("We received DeviceMetrics from a node we don't have info on.  Ignoring.");
-                                                            return None;
+                                                            ComprehensiveNode::with_id(pa.from)
                                                         }
                                                     };
                                                     info!(
@@ -98,7 +130,18 @@ pub async fn process_packet(
                                                             .id,
                                                         pa.from
                                                     );
-                                                    cn.node_info.device_metrics = Some(dm);
+                                                    cn.node_info.device_metrics = Some(dm.clone());
+                                                    cn.timeseries.push_back(
+                                                        TimeSeriesData {
+                                                            timestamp: get_secs(),
+                                                            device: dm.clone(),
+                                                            rssi: pa.rx_rssi as f64,
+                                                            snr: pa.rx_snr as f64,
+                                                            ..Default::default()
+                                                        });
+                                                    if cn.timeseries_start == 0 {
+                                                        cn.timeseries_start = get_secs();
+                                                    };
                                                     cn.last_seen = util::get_secs();
                                                     cn.last_rssi = pa.rx_rssi;
                                                     cn.last_snr = pa.rx_snr;
@@ -140,8 +183,7 @@ pub async fn process_packet(
                                         }
                                         let mut cn = match node_list.get(&data.node_id) {
                                             None => {
-                                                warn!("We received neighbor list from a node we don't have info on.  Ignoring.");
-                                                return None;
+                                                ComprehensiveNode::with_id(pa.from)
                                             }
                                             Some(n) => n.clone(),
                                         };

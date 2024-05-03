@@ -4,7 +4,7 @@ use time::macros::format_description;
 pub const DATE_FORMAT: &[BorrowedFormatItem<'_>] =
     format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
 
-pub const TICK_RATE: f64 = 10.0_f64;
+pub const TICK_RATE: f64 = 4.0_f64;
 pub const FRAME_RATE: f64 = 2.0_f64;
 
 pub const MPSC_BUFFER_SIZE: usize = 100_usize;
