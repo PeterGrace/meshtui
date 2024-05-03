@@ -284,16 +284,25 @@ impl App {
             .unwrap();
         Ok(())
     }
+
     fn is_running(&self) -> bool {
         self.mode != Mode::Exiting
     }
+
     fn prev_tab(&mut self) {
-        self.tab = self.tab.prev();
+        match self.tab {
+            MenuTabs::Nodes => self.tab = self.nodes_tab.prev_tab(self.tab),
+            _ => self.tab = self.tab.prev()
+        };
     }
 
     fn next_tab(&mut self) {
-        self.tab = self.tab.next();
+        match self.tab {
+            MenuTabs::Nodes => self.tab = self.nodes_tab.next_tab(self.tab),
+            _ => self.tab = self.tab.next()
+        }
     }
+
     fn left(&mut self) {
         match self.tab {
             MenuTabs::DeviceConfig => self.device_config_tab.left(),
@@ -517,12 +526,12 @@ impl Widget for &App {
 }
 
 impl MenuTabs {
-    fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         let current_index = self as usize;
         let next_index = current_index.saturating_add(1);
         Self::from_repr(next_index).unwrap_or(self)
     }
-    fn prev(self) -> Self {
+    pub(crate) fn prev(self) -> Self {
         let current_index = self as usize;
         let prev_index = current_index.saturating_sub(1);
         Self::from_repr(prev_index).unwrap_or(self)

@@ -62,6 +62,22 @@ impl ComprehensiveNode {
 }
 
 impl NodesTab {
+    pub(crate) fn prev_tab(&mut self, app_tab: MenuTabs) -> MenuTabs {
+        if self.display_mode == DisplayMode::Detail {
+            self.which_graph = self.which_graph.prev();
+            app_tab
+        } else {
+            app_tab.prev()
+        }
+    }
+    pub(crate) fn next_tab(&mut self, app_tab: MenuTabs) -> MenuTabs {
+        if self.display_mode == DisplayMode::Detail {
+            self.which_graph = self.which_graph.next();
+            app_tab
+        } else {
+            app_tab.next()
+        }
+    }
     pub async fn run(&mut self) {
         if self.prefs.initialized.is_empty() {
             let prefs = PREFERENCES.try_read().unwrap();
@@ -450,6 +466,7 @@ impl Widget for NodesTab {
         {
             page_size = *PAGE_SIZE.try_read().unwrap();
         }
+
         if page_size != area.height {
             if let Ok(mut ps) = PAGE_SIZE.try_write() {
                 *ps = area.height;
