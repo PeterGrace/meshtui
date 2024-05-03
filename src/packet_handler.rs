@@ -16,7 +16,7 @@ use meshtastic::Message;
 use std::collections::HashMap;
 
 pub(crate) enum PacketResponse {
-    NodeUpdate(u32, ComprehensiveNode),
+    NodeUpdate(u32, Box<ComprehensiveNode>),
     UserUpdate(u32, User),
     InboundMessage(MessageEnvelope),
     OurAddress(u32),
@@ -66,7 +66,7 @@ pub async fn process_packet(
                                         cn.last_snr = pa.rx_snr;
                                         return Some(PacketResponse::NodeUpdate(
                                             cn.node_info.num,
-                                            cn,
+                                            Box::new(cn),
                                         ));
                                     }
                                     PortNum::TelemetryApp => {
@@ -104,7 +104,7 @@ pub async fn process_packet(
                                                     cn.last_snr = pa.rx_snr;
                                                     return Some(PacketResponse::NodeUpdate(
                                                         cn.node_info.num,
-                                                        cn,
+                                                        Box::new(cn),
                                                     ));
                                                 }
                                                 _ => {
@@ -151,7 +151,7 @@ pub async fn process_packet(
                                         cn.last_snr = pa.rx_snr;
                                         return Some(PacketResponse::NodeUpdate(
                                             cn.node_info.num,
-                                            cn,
+                                            Box::new(cn),
                                         ));
                                     }
                                     PortNum::NodeinfoApp => {
@@ -214,7 +214,7 @@ pub async fn process_packet(
                                                 "updating route table to {:#?} for !{:x}->!{:x}",
                                                 route.route, from_id, to_id
                                             );
-                                            return Some(PacketResponse::NodeUpdate(cn.id, cn));
+                                            return Some(PacketResponse::NodeUpdate(cn.id, Box::new(cn)));
                                         }
                                     }
                                     PortNum::ReplyApp => {
@@ -294,7 +294,7 @@ pub async fn process_packet(
                     cn.last_rssi = 0;
                     cn.last_snr = ni.snr;
 
-                    return Some(PacketResponse::NodeUpdate(ni.num, cn));
+                    return Some(PacketResponse::NodeUpdate(ni.num, Box::new(cn)));
                 }
                 from_radio::PayloadVariant::Config(cfg) => {
                     info!("Receiving DeviceConfig from device.");

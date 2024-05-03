@@ -214,7 +214,7 @@ impl App {
                     // we received an update on a node
                     match update.unwrap() {
                         PacketResponse::NodeUpdate(id, cn) => {
-                            self.nodes_tab.node_list.insert(id, cn);
+                            self.nodes_tab.node_list.insert(id, *cn);
                         }
                         PacketResponse::InboundMessage(envelope) => {
                             if let Some(cn) = self
