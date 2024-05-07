@@ -385,6 +385,7 @@ impl App {
                     }
                 }
                 self.input = "".to_string();
+                self.cursor_position = 0;
                 self.input_mode = InputMode::Normal;
             }
         }
