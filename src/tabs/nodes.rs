@@ -863,7 +863,7 @@ impl Widget for NodesTab {
                     "Last Heard NodeInfo",
                     "Last Update",
                 ])
-                    .set_style(THEME.message_header)
+                    .style(THEME.message_header)
                     .bottom_margin(1);
 
                 let block = Block::new()
@@ -891,7 +891,7 @@ impl Widget for NodesTab {
 
                 StatefulWidget::render(
                     scrollbar,
-                    area.inner(&Margin {
+                    area.inner(Margin {
                         vertical: 1,
                         horizontal: 0,
                     }),
