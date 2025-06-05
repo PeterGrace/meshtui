@@ -2,6 +2,7 @@ use crate::app::Mode;
 use crate::packet_handler::MessageEnvelope;
 use crate::theme::THEME;
 use crate::{consts, PAGE_SIZE};
+use meshtastic::protobufs::User;
 use circular_buffer::CircularBuffer;
 use itertools::Itertools;
 
@@ -134,7 +135,7 @@ impl Widget for MessagesTab {
                         .unwrap()
                         .user
                         .clone()
-                        .unwrap()
+                        .unwrap_or_else(User::default)
                         .long_name,
                     destination_str,
                     message.clone().message,
@@ -150,7 +151,7 @@ impl Widget for MessagesTab {
             .style(THEME.middle);
 
         let header = Row::new(vec!["Time", "Source", "Destination", "Message"])
-            .set_style(THEME.message_header)
+            .style(THEME.message_header)
             .bottom_margin(1);
 
         StatefulWidget::render(
