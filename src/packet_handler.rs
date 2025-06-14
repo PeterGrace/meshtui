@@ -46,7 +46,13 @@ pub async fn process_packet(
                             mesh_packet::PayloadVariant::Decoded(de) => {
                                 match de.portnum() {
                                     PortNum::PositionApp => {
-                                        let data = Position::decode(de.payload.as_slice()).unwrap();
+                                        let data = match Position::decode(de.payload.as_slice()) {
+                                            Ok(d)=> d,
+                                            Err(e) => {
+                                                error!("Error decoding position: {}", e);
+                                                return None;
+                                            }
+                                        };
                                         let mut cn = match node_list.contains_key(&pa.from) {
                                             true => node_list.get(&pa.from).unwrap().to_owned(),
                                             false => ComprehensiveNode::with_id(de.source),
@@ -70,10 +76,13 @@ pub async fn process_packet(
                                         ));
                                     }
                                     PortNum::TelemetryApp => {
-                                        let data = meshtastic::protobufs::Telemetry::decode(
-                                            de.payload.as_slice(),
-                                        )
-                                        .unwrap();
+                                        let data = match meshtastic::protobufs::Telemetry::decode(de.payload.as_slice()) {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                error!("Error decoding telemetry: {e}");
+                                                return None
+                                            }
+                                        };
                                         if let Some(v) = data.variant {
                                             match v {
                                                 telemetry::Variant::EnvironmentMetrics(env) => {
@@ -161,7 +170,13 @@ pub async fn process_packet(
                                     }
                                     PortNum::NeighborinfoApp => {
                                         let data =
-                                            NeighborInfo::decode(de.payload.as_slice()).unwrap();
+                                            match NeighborInfo::decode(de.payload.as_slice()) {
+                                                Ok(d) => d,
+                                                Err(e) => {
+                                                    error!("Error decoding neighbor info: {}", e);
+                                                    return None;
+                                                }
+                                            };
                                         let empty = ComprehensiveNode::with_id(de.source);
                                         for neighbor in data.neighbors.iter() {
                                             let d_cn = node_list
@@ -197,7 +212,14 @@ pub async fn process_packet(
                                         ));
                                     }
                                     PortNum::NodeinfoApp => {
-                                        let data = User::decode(de.payload.as_slice()).unwrap();
+                                        let data = match User::decode(de.payload.as_slice())
+                                        {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                error!("Error decoding user: {}", e);
+                                                return None;
+                                            }
+                                        };
                                         info!(
                                             "Received node info update for {} ({})",
                                             data.id, pa.from
@@ -215,7 +237,13 @@ pub async fn process_packet(
                                         return Some(PacketResponse::UserUpdate(nid, data));
                                     }
                                     PortNum::RoutingApp => {
-                                        let data = Routing::decode(de.payload.as_slice()).unwrap();
+                                        let data = match Routing::decode(de.payload.as_slice()) {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                error!("Error decoding routing: {}", e);
+                                                return None;
+                                            }
+                                        };
                                         if let Some(v) = data.variant {
                                             match v {
                                                 routing::Variant::RouteRequest(_r) => {
