@@ -17,6 +17,7 @@ modules:
       append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/meshtui/cargo
+        RUSTFLAGS: "-C target-feature=-crt-static"
     build-commands:
       - cargo --offline fetch --manifest-path Cargo.toml --verbose
       - cargo --offline build --release --manifest-path Cargo.toml
