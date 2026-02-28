@@ -21,7 +21,7 @@ modules:
     build-commands:
       - cargo --offline fetch --manifest-path Cargo.toml --verbose
       - cargo --offline build --release --manifest-path Cargo.toml
-      - install -Dm755 target/release/meshtui /app/bin/meshtui
+      - install -Dm755 target/x86_64-unknown-linux-gnu/release/meshtui /app/bin/meshtui
     sources:
       - type: dir
         path: .
