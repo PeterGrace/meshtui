@@ -1,7 +1,7 @@
 use crate::consts;
 use crate::ipc::IPCMessage;
 use crate::meshtastic_interaction::meshtastic_loop;
-use crate::packet_handler::{process_packet, MessageEnvelope, PacketResponse};
+use crate::packet_handler::{MessageEnvelope, PacketResponse, process_packet};
 use crate::tabs::nodes::ComprehensiveNode;
 use crate::tabs::*;
 use crate::theme::THEME;
@@ -10,7 +10,7 @@ use crate::{tui, util};
 use anyhow::Result;
 use color_eyre::eyre::WrapErr;
 use crossterm::event::KeyCode;
-use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
+use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
 use meshtastic::protobufs::Channel;
@@ -292,14 +292,14 @@ impl App {
     fn prev_tab(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.tab = self.nodes_tab.prev_tab(self.tab),
-            _ => self.tab = self.tab.prev()
+            _ => self.tab = self.tab.prev(),
         };
     }
 
     fn next_tab(&mut self) {
         match self.tab {
             MenuTabs::Nodes => self.tab = self.nodes_tab.next_tab(self.tab),
-            _ => self.tab = self.tab.next()
+            _ => self.tab = self.tab.next(),
         }
     }
 
@@ -411,7 +411,13 @@ impl App {
     }
 
     fn enter_char(&mut self, new_char: char) {
-        self.input.insert(self.cursor_position, new_char);
+        let byte_index = self
+            .input
+            .char_indices()
+            .nth(self.cursor_position)
+            .map(|(i, _)| i)
+            .unwrap_or(self.input.len());
+        self.input.insert(byte_index, new_char);
         self.move_cursor_right();
     }
 
@@ -438,7 +444,7 @@ impl App {
     }
 
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        new_cursor_pos.clamp(0, self.input.len())
+        new_cursor_pos.clamp(0, self.input.chars().count())
     }
 
     fn render_event_log(&self, area: Rect, buf: &mut Buffer) {
