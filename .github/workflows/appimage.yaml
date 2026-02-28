@@ -1,0 +1,64 @@
+name: AppImage Build
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v?[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  appimage:
+    name: AppImage (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Assemble AppDir
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp target/release/meshtui AppDir/usr/bin/meshtui
+
+          cat > AppDir/meshtui.desktop << 'EOF'
+          [Desktop Entry]
+          Name=meshtui
+          Exec=meshtui
+          Icon=meshtui
+          Type=Application
+          Categories=Utility;Network;
+          Terminal=true
+          Comment=Terminal UI for Meshtastic mesh networking
+          EOF
+
+          cp meshtui-screenshot.png AppDir/meshtui.png
+
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          exec "$APPDIR/usr/bin/meshtui" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+      - name: Download appimagetool
+        run: |
+          curl -L -o appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+
+      - name: Build AppImage
+        run: ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir meshtui-x86_64.AppImage
+
+      - name: Upload AppImage to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: meshtui-x86_64.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

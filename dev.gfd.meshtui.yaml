@@ -1,0 +1,27 @@
+app-id: dev.gfd.meshtui
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: meshtui
+
+finish-args:
+  - --share=network
+  - --device=all
+
+modules:
+  - name: meshtui
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/meshtui/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --manifest-path Cargo.toml
+      - install -Dm755 target/release/meshtui /app/bin/meshtui
+    sources:
+      - type: dir
+        path: .
+      - cargo-sources.json
