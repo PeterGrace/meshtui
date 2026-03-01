@@ -1,22 +1,22 @@
+use crate::PREFERENCES;
 use crate::app::{MenuTabs, Mode, Preferences};
 use crate::consts::GPS_PRECISION_FACTOR;
 use crate::theme::THEME;
 use crate::util::get_secs;
-use crate::PREFERENCES;
-use crate::{consts, util, PAGE_SIZE};
+use crate::{PAGE_SIZE, consts, util};
 use geoutils::Location;
 use itertools::Itertools;
 
+use circular_buffer::CircularBuffer;
 use meshtastic::protobufs;
-use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 use meshtastic::protobufs::PortNum::TracerouteApp;
+use meshtastic::protobufs::to_radio::PayloadVariant::Packet;
 use meshtastic::protobufs::*;
 use pretty_duration::pretty_duration;
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::ops::Div;
 use std::time::Duration;
-use circular_buffer::CircularBuffer;
 use strum::Display;
 
 use crate::ipc::IPCMessage;
@@ -41,7 +41,7 @@ pub struct NodesTab {
     pub display_mode: DisplayMode,
     pub selected_node_id: u32,
     pub page_size: u16,
-    pub which_graph: DisplayedGraph
+    pub which_graph: DisplayedGraph,
 }
 #[derive(Default, Debug, Display, Clone)]
 pub enum DisplayedGraph {
@@ -70,8 +70,7 @@ impl DisplayedGraph {
             Temperature => SNR,
             RelativeHumidity => Temperature,
             BarometricPressure => RelativeHumidity,
-            GasResistance => BarometricPressure
-
+            GasResistance => BarometricPressure,
         }
     }
     fn next(&self) -> Self {
@@ -104,7 +103,6 @@ pub struct ComprehensiveNode {
     pub timeseries_start: u64,
 }
 
-
 #[derive(Debug, Clone, Default)]
 pub struct TimeSeriesData {
     pub timestamp: u64,
@@ -113,7 +111,7 @@ pub struct TimeSeriesData {
     pub air_quality: AirQualityMetrics,
     pub power: PowerMetrics,
     pub rssi: f64,
-    pub snr: f64
+    pub snr: f64,
 }
 
 impl ComprehensiveNode {
@@ -170,306 +168,338 @@ impl NodesTab {
         self.table_contents.reverse();
     }
     pub(crate) fn get_details_for_node(&self, area: Rect, buf: &mut Buffer) {
-        let me = self.node_list.get(&self.my_node_id).unwrap();
-        let cn = self.node_list.get(&self.selected_node_id).cloned().unwrap();
+        if let Some(cn) = self.node_list.get(&self.selected_node_id).cloned() {
+            let me = self.node_list.get(&self.my_node_id).unwrap();
 
-        //region layout and block pre-game
-        let left_side_constraints = vec![Constraint::Max(30), Constraint::Max(30)];
-        let right_top_constraints = vec![
-            Constraint::Min(0),
-            Constraint::Min(10),
-            Constraint::Min(10),
-            Constraint::Min(25),
-        ];
-        let right_bottom_constraints = vec![Constraint::Max(13), Constraint::Min(0)];
+            //region layout and block pre-game
+            let left_side_constraints = vec![Constraint::Max(30), Constraint::Max(30)];
+            let right_top_constraints = vec![
+                Constraint::Min(0),
+                Constraint::Min(10),
+                Constraint::Min(10),
+                Constraint::Min(25),
+            ];
+            let right_bottom_constraints = vec![Constraint::Max(13), Constraint::Min(0)];
 
-        let default_inner_block = Block::default()
-            .borders(Borders::ALL)
-            .title_alignment(Alignment::Center)
-            .border_set(symbols::border::ROUNDED)
-            .style(THEME.middle);
-        let left_top_block = default_inner_block.clone().title("Basics");
-        let right_top_block = default_inner_block.clone().title("Neighbors");
-        let right_bottom_block = default_inner_block.clone().title("Traceroute");
+            let default_inner_block = Block::default()
+                .borders(Borders::ALL)
+                .title_alignment(Alignment::Center)
+                .border_set(symbols::border::ROUNDED)
+                .style(THEME.middle);
+            let left_top_block = default_inner_block.clone().title("Basics");
+            let right_top_block = default_inner_block.clone().title("Neighbors");
+            let right_bottom_block = default_inner_block.clone().title("Traceroute");
 
-        let [left_side, right_side] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(crate::FIFTY_FIFTY.iter())
-            .margin(1)
-            .areas(area);
+            let [left_side, right_side] = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(crate::FIFTY_FIFTY.iter())
+                .margin(1)
+                .areas(area);
 
-        let [left_top, left_bottom] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(crate::FIFTY_FIFTY.iter())
-            .areas(left_side);
+            let [left_top, left_bottom] = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(crate::FIFTY_FIFTY.iter())
+                .areas(left_side);
 
-        let [right_top_layout, right_bottom_layout] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(crate::FIFTY_FIFTY.iter())
-            .areas(right_side);
-        //endregion
+            let [right_top_layout, right_bottom_layout] = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(crate::FIFTY_FIFTY.iter())
+                .areas(right_side);
+            //endregion
 
-        //region left-side fields
-        let mut rows: Vec<Row> = vec![];
+            //region left-side fields
+            let mut rows: Vec<Row> = vec![];
 
-        if cn.node_info.via_mqtt {
-            rows.push(Row::new(vec!["====(VIA MQTT)===="]).style(THEME.warning_highlight));
-        }
-
-        rows.push(Row::new(vec![
-            "Node id (num)".to_string(),
-            format!("{} (!{:x})", cn.id.to_string(), cn.id),
-        ]));
-
-        //region User-struct display fields
-        if cn.node_info.user.is_some() {
-            let user = cn.node_info.user.unwrap();
+            if cn.node_info.via_mqtt {
+                rows.push(Row::new(vec!["====(VIA MQTT)===="]).style(THEME.warning_highlight));
+            }
 
             rows.push(Row::new(vec![
-                "Id (According to User)".to_string(),
-                user.id.clone(),
+                "Node id (num)".to_string(),
+                format!("{} (!{:x})", cn.id.to_string(), cn.id),
             ]));
 
-            rows.push(Row::new(vec![
-                "Name (Short)".to_string(),
-                format!("{} ({})", user.long_name, user.short_name),
-            ]));
+            //region User-struct display fields
+            if cn.node_info.user.is_some() {
+                let user = cn.node_info.user.unwrap();
 
-            rows.push(Row::new(vec![
-                "Hardware Model".to_string(),
-                format!("{:?}", user.hw_model()),
-            ]));
-            rows.push(Row::new(vec![
-                "Licensed Operator".to_string(),
-                format!("{}", user.is_licensed),
-            ]));
-            rows.push(Row::new(vec![
-                "Device Role".to_string(),
-                format!("{:?}", user.role()),
-            ]));
-        } else {
-            rows.push(Row::new(vec![
-                "Id* (implied)".to_string(),
-                format!("*{:x}", cn.id),
-            ]));
-        }
-        //endregion
-
-        rows.push(Row::new(vec![
-            "Last RF SNR/RSSI".to_string(),
-            format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi),
-        ]));
-
-        //region DeviceMetrics-struct display fields
-        if let Some(device_metrics) = cn.node_info.device_metrics {
-            if device_metrics.air_util_tx > 0.0 {
                 rows.push(Row::new(vec![
-                    "Air/TX Utilization".to_string(),
-                    format!("{:.2}%", device_metrics.air_util_tx),
+                    "Id (According to User)".to_string(),
+                    user.id.clone(),
                 ]));
-            }
-            if device_metrics.channel_utilization > 0.0 {
+
                 rows.push(Row::new(vec![
-                    "Channel Utilization".to_string(),
-                    format!("{:.2}%", device_metrics.channel_utilization),
+                    "Name (Short)".to_string(),
+                    format!("{} ({})", user.long_name, user.short_name),
                 ]));
-            }
 
-            if device_metrics.voltage > 0.0 {
                 rows.push(Row::new(vec![
-                    "Device Voltage".to_string(),
-                    format!("{:.2}V", device_metrics.voltage),
+                    "Hardware Model".to_string(),
+                    format!("{:?}", user.hw_model()),
                 ]));
-            }
-            match device_metrics.battery_level {
-                1..=100 => {
-                    rows.push(Row::new(vec![
-                        "Battery Level".to_string(),
-                        format!("{:.2}%", device_metrics.battery_level),
-                    ]));
-                }
-                101 => {
-                    rows.push(Row::new(vec![
-                        "Battery Level".to_string(),
-                        format!("Plugged-in"),
-                    ]));
-                }
-                _ => {}
-            }
-        }
-        //endregion
-        //endregion
-
-        //region Position-struct display fields
-        if let Some(position) = cn.node_info.position {
-            if position.latitude_i != 0 {
                 rows.push(Row::new(vec![
-                    "Latitude".to_string(),
-                    format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR)),
+                    "Licensed Operator".to_string(),
+                    format!("{}", user.is_licensed),
                 ]));
-            }
-            if position.longitude_i != 0 {
                 rows.push(Row::new(vec![
-                    "Longitude".to_string(),
-                    format!(
-                        "{:.2}",
-                        position.longitude_i as f32 * (GPS_PRECISION_FACTOR)
-                    ),
+                    "Device Role".to_string(),
+                    format!("{:?}", user.role()),
                 ]));
-            }
-            if position.altitude > 0 {
-                rows.push(Row::new(vec![
-                    "Altitude".to_string(),
-                    format!("{}m", position.altitude),
-                ]));
-            }
-        }
-        //endregion
-
-        Widget::render(
-            Table::new(rows, left_side_constraints)
-                .highlight_style(THEME.tabs_selected)
-                .block(left_top_block),
-            left_top,
-            buf,
-        );
-
-        self.make_graph(left_bottom, buf);
-
-
-        //region right-top
-        let mut right_top_rows: Vec<Row> = vec![];
-        //region NeighborApp display fields
-        if !cn.neighbors.is_empty() {
-            right_top_rows.push(Row::new(vec![""]));
-            right_top_rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
-            right_top_rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
-            for item in cn.neighbors.iter() {
-                let id = self
-                    .node_list
-                    .get(&item.node_id)
-                    .unwrap()
-                    .clone()
-                    .node_info
-                    .user
-                    .unwrap()
-                    .id;
-                let snr = format!("{:.2}dB", item.snr);
-                let mut last_seen: String = "Unknown".to_string();
-                if item.last_rx_time > 0 {
-                    last_seen = pretty_duration(
-                        &Duration::from_secs(
-                            util::get_secs().saturating_sub(item.last_rx_time as u64),
-                        ),
-                        None,
-                    );
-                }
-                right_top_rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
-            }
-        }
-
-        Widget::render(
-            Table::new(right_top_rows, right_top_constraints)
-                .highlight_style(THEME.tabs_selected)
-                .block(right_top_block),
-            right_top_layout,
-            buf,
-        );
-        //endregion
-
-        //region traceroute display
-        let mut right_bottom_rows: Vec<Row> = vec![];
-        if let Some(routes) = cn.route_list.get(&me.id) {
-            let whole_route: String = if routes.is_empty() {
-                format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id)
             } else {
-                let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join(" -> ");
-                format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id)
-            };
-            right_bottom_rows.push(Row::new(vec!["Latest Route:", ""]));
-            right_bottom_rows.push(Row::new(vec!["".to_string(), whole_route]));
-        };
+                rows.push(Row::new(vec![
+                    "Id* (implied)".to_string(),
+                    format!("*{:x}", cn.id),
+                ]));
+            }
+            //endregion
 
-        Widget::render(
-            Table::new(right_bottom_rows, right_bottom_constraints)
-                .highlight_style(THEME.tabs_selected)
-                .block(right_bottom_block),
-            right_bottom_layout,
-            buf,
-        );
-        //endregion
+            rows.push(Row::new(vec![
+                "Last RF SNR/RSSI".to_string(),
+                format!("{:.2}dB/{:.2}db", cn.last_snr, cn.last_rssi),
+            ]));
+
+            //region DeviceMetrics-struct display fields
+            if let Some(device_metrics) = cn.node_info.device_metrics {
+                if device_metrics.air_util_tx > 0.0 {
+                    rows.push(Row::new(vec![
+                        "Air/TX Utilization".to_string(),
+                        format!("{:.2}%", device_metrics.air_util_tx),
+                    ]));
+                }
+                if device_metrics.channel_utilization > 0.0 {
+                    rows.push(Row::new(vec![
+                        "Channel Utilization".to_string(),
+                        format!("{:.2}%", device_metrics.channel_utilization),
+                    ]));
+                }
+
+                if device_metrics.voltage > 0.0 {
+                    rows.push(Row::new(vec![
+                        "Device Voltage".to_string(),
+                        format!("{:.2}V", device_metrics.voltage),
+                    ]));
+                }
+                match device_metrics.battery_level {
+                    1..=100 => {
+                        rows.push(Row::new(vec![
+                            "Battery Level".to_string(),
+                            format!("{:.2}%", device_metrics.battery_level),
+                        ]));
+                    }
+                    101 => {
+                        rows.push(Row::new(vec![
+                            "Battery Level".to_string(),
+                            format!("Plugged-in"),
+                        ]));
+                    }
+                    _ => {}
+                }
+            }
+            //endregion
+            //endregion
+
+            //region Position-struct display fields
+            if let Some(position) = cn.node_info.position {
+                if position.latitude_i != 0 {
+                    rows.push(Row::new(vec![
+                        "Latitude".to_string(),
+                        format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR)),
+                    ]));
+                }
+                if position.longitude_i != 0 {
+                    rows.push(Row::new(vec![
+                        "Longitude".to_string(),
+                        format!(
+                            "{:.2}",
+                            position.longitude_i as f32 * (GPS_PRECISION_FACTOR)
+                        ),
+                    ]));
+                }
+                if position.altitude > 0 {
+                    rows.push(Row::new(vec![
+                        "Altitude".to_string(),
+                        format!("{}m", position.altitude),
+                    ]));
+                }
+            }
+            //endregion
+
+            Widget::render(
+                Table::new(rows, left_side_constraints)
+                    .highlight_style(THEME.tabs_selected)
+                    .block(left_top_block),
+                left_top,
+                buf,
+            );
+
+            self.make_graph(left_bottom, buf);
+
+            //region right-top
+            let mut right_top_rows: Vec<Row> = vec![];
+            //region NeighborApp display fields
+            if !cn.neighbors.is_empty() {
+                right_top_rows.push(Row::new(vec![""]));
+                right_top_rows.push(Row::new(vec!["Neighbors:", "id", "SNR", "Last Seen"]));
+                right_top_rows.push(Row::new(vec!["", "=========", "=====", "=========="]));
+                for item in cn.neighbors.iter() {
+                    let id = self
+                        .node_list
+                        .get(&item.node_id)
+                        .unwrap()
+                        .clone()
+                        .node_info
+                        .user
+                        .unwrap()
+                        .id;
+                    let snr = format!("{:.2}dB", item.snr);
+                    let mut last_seen: String = "Unknown".to_string();
+                    if item.last_rx_time > 0 {
+                        last_seen = pretty_duration(
+                            &Duration::from_secs(
+                                util::get_secs().saturating_sub(item.last_rx_time as u64),
+                            ),
+                            None,
+                        );
+                    }
+                    right_top_rows.push(Row::new(vec!["".to_string(), id, snr, last_seen]));
+                }
+            }
+
+            Widget::render(
+                Table::new(right_top_rows, right_top_constraints)
+                    .highlight_style(THEME.tabs_selected)
+                    .block(right_top_block),
+                right_top_layout,
+                buf,
+            );
+            //endregion
+
+            //region traceroute display
+            let mut right_bottom_rows: Vec<Row> = vec![];
+            if let Some(routes) = cn.route_list.get(&me.id) {
+                let whole_route: String = if routes.is_empty() {
+                    format!("!{:x} -> !{:x} (Direct Hop)", me.id, cn.id)
+                } else {
+                    let rest_of_route = routes.iter().map(|s| format!("!{:x}", &s)).join(" -> ");
+                    format!("!{:x} -> {} -> !{:x}", me.id, &rest_of_route, cn.id)
+                };
+                right_bottom_rows.push(Row::new(vec!["Latest Route:", ""]));
+                right_bottom_rows.push(Row::new(vec!["".to_string(), whole_route]));
+            };
+
+            Widget::render(
+                Table::new(right_bottom_rows, right_bottom_constraints)
+                    .highlight_style(THEME.tabs_selected)
+                    .block(right_bottom_block),
+                right_bottom_layout,
+                buf,
+            );
+            //endregion
+            //endregion
+        }
     }
     pub fn make_graph(&self, area: Rect, buf: &mut Buffer) {
         // chart time
         use DisplayedGraph::*;
         let cn = self.node_list.get(&self.selected_node_id).cloned().unwrap();
-        let mut data: Vec<(f64,f64)>;
+        let mut data: Vec<(f64, f64)>;
         let graph_name: String;
         let y_axis_unit: String;
         match self.which_graph {
             Battery => {
                 graph_name = "Battery".to_string();
                 y_axis_unit = "Percent (%)".to_string();
-                data = cn.timeseries.iter().map(|d| {
-                    (d.timestamp as f64, d.device.battery_level as f64)
-                }).collect();
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.device.battery_level as f64))
+                    .collect();
             }
             Voltage => {
                 graph_name = "Device Voltage".to_string();
                 y_axis_unit = "Volts (V)".to_string();
-                data = cn.timeseries.iter().map(|d| {
-                    (d.timestamp as f64, d.device.voltage as f64)
-                }).collect();
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.device.voltage as f64))
+                    .collect();
             }
             AirUtilization => {
                 graph_name = "Air Utilization".to_string();
                 y_axis_unit = "Percent (%)".to_string();
-                data = cn.timeseries.iter().map(|d| {
-                    (d.timestamp as f64, d.device.air_util_tx as f64)
-                }).collect();
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.device.air_util_tx as f64))
+                    .collect();
             }
             ChannelUtilization => {
                 graph_name = "Channel Utilization".to_string();
                 y_axis_unit = "Percent (%)".to_string();
-                data = cn.timeseries.iter().map(|d| {
-                    (d.timestamp as f64, d.device.channel_utilization as f64)
-                }).collect()
-
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.device.channel_utilization as f64))
+                    .collect()
             }
             RSSI => {
                 graph_name = "RSSI".to_string();
                 y_axis_unit = "decibels (dB)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.rssi)).collect()
-            },
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.rssi))
+                    .collect()
+            }
             SNR => {
                 graph_name = "SNR".to_string();
                 y_axis_unit = "decibels (dB)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.snr)).collect()
-            },
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.snr))
+                    .collect()
+            }
             Temperature => {
                 graph_name = "Temperature".to_string();
                 y_axis_unit = "Celsius (C)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.temperature as f64)).collect()
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.environment.temperature as f64))
+                    .collect()
             }
             RelativeHumidity => {
                 graph_name = "Relative Humidity".to_string();
                 y_axis_unit = "Percent (%)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.relative_humidity as f64)).collect()
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.environment.relative_humidity as f64))
+                    .collect()
             }
             BarometricPressure => {
                 graph_name = "Barometric Pressure".to_string();
                 y_axis_unit = "millibars (mb)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.barometric_pressure as f64)).collect()
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.environment.barometric_pressure as f64))
+                    .collect()
             }
             GasResistance => {
                 graph_name = "Gas Resistance".to_string();
                 y_axis_unit = "milliohms (mΩ)".to_string();
-                data = cn.timeseries.iter().map(|d| (d.timestamp as f64,d.environment.gas_resistance as f64)).collect()
+                data = cn
+                    .timeseries
+                    .iter()
+                    .map(|d| (d.timestamp as f64, d.environment.gas_resistance as f64))
+                    .collect()
             }
         };
         // if our dataset has exact 0.0 entries, the chances are astronomically high that the
         // value was put there by Default::default() instead of an actual data read.
-        data.retain(|(_,  datum)| datum > &0.0);
+        data.retain(|(_, datum)| datum > &0.0);
 
         let dataset = Dataset::default()
             .marker(symbols::Marker::Braille)
@@ -478,16 +508,25 @@ impl NodesTab {
             .style(THEME.tabs_selected)
             .data(data.as_slice());
 
+        let x_bound: Vec<f64> = data.iter().map(|(ts, _)| *ts).collect();
+        let x_low = *x_bound
+            .iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or(&0.0);
+        let x_high = *x_bound
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or(&0.0);
 
-        let x_bound: Vec<f64> = data.iter().map(|(ts, _)| {
-            *ts
-        }).collect();
-        let x_low = *x_bound.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
-        let x_high = *x_bound.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
-
-        let y_bound: Vec<f64> = data.iter().map(|(_,c)| *c).collect();
-        let y_low = *y_bound.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
-        let y_high = *y_bound.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&0.0);
+        let y_bound: Vec<f64> = data.iter().map(|(_, c)| *c).collect();
+        let y_low = *y_bound
+            .iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or(&0.0);
+        let y_high = *y_bound
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or(&0.0);
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -500,12 +539,18 @@ impl NodesTab {
             .title("unixtime")
             .style(THEME.tabs_selected)
             .bounds([x_low, x_high])
-            .labels(vec![Span::raw(x_low.to_string()), Span::raw(x_high.to_string())]);
+            .labels(vec![
+                Span::raw(x_low.to_string()),
+                Span::raw(x_high.to_string()),
+            ]);
         let y_axis = Axis::default()
             .title(y_axis_unit)
             .style(THEME.tabs_selected)
             .bounds([y_low, y_high])
-            .labels(vec![Span::raw(format!("{:.2}",y_low)),Span::raw(format!("{:.2}",y_high))]);
+            .labels(vec![
+                Span::raw(format!("{:.2}", y_low)),
+                Span::raw(format!("{:.2}", y_high)),
+            ]);
         Widget::render(
             Chart::new(vec![dataset])
                 .style(THEME.middle)
@@ -522,7 +567,7 @@ impl NodesTab {
             self.selected_node_id = self.table_contents[index].clone().id;
 
             #[allow(deprecated)]
-                let mesh_packet = MeshPacket {
+            let mesh_packet = MeshPacket {
                 from: 0,
                 to: self.selected_node_id,
                 channel: 0,
@@ -574,8 +619,10 @@ impl NodesTab {
         match self.display_mode {
             DisplayMode::List => {
                 if let Some(index) = self.table_state.selected() {
-                    self.selected_node_id = self.table_contents[index].clone().id;
-                    self.display_mode = DisplayMode::Detail
+                    if let Some(nid) = self.table_contents.get(index) {
+                        self.selected_node_id = nid.clone().id;
+                        self.display_mode = DisplayMode::Detail
+                    }
                 }
             }
             DisplayMode::Detail => self.display_mode = DisplayMode::List,
@@ -863,8 +910,8 @@ impl Widget for NodesTab {
                     "Last Heard NodeInfo",
                     "Last Update",
                 ])
-                    .style(THEME.message_header)
-                    .bottom_margin(1);
+                .style(THEME.message_header)
+                .bottom_margin(1);
 
                 let block = Block::new()
                     .borders(Borders::ALL)
