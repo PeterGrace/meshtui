@@ -260,39 +260,48 @@ impl NodesTab {
 
             //region DeviceMetrics-struct display fields
             if let Some(device_metrics) = cn.node_info.device_metrics {
-                if device_metrics.air_util_tx > 0.0 {
-                    rows.push(Row::new(vec![
-                        "Air/TX Utilization".to_string(),
-                        format!("{:.2}%", device_metrics.air_util_tx),
-                    ]));
+                if let Some(air_util_tx) = device_metrics.air_util_tx  {
+                    if air_util_tx > 0.0 {
+                        rows.push(Row::new(vec![
+                            "Air/TX Utilization".to_string(),
+                            format!("{:.2}%", air_util_tx),
+                        ]));
+                    }
                 }
-                if device_metrics.channel_utilization > 0.0 {
-                    rows.push(Row::new(vec![
-                        "Channel Utilization".to_string(),
-                        format!("{:.2}%", device_metrics.channel_utilization),
-                    ]));
+                if let Some (c_u) = device_metrics.channel_utilization  {
+                    if c_u > 0.0 {
+                        rows.push(Row::new(vec![
+                            "Channel Utilization".to_string(),
+                            format!("{:.2}%", c_u),
+                        ]));
+
+                    }
                 }
 
-                if device_metrics.voltage > 0.0 {
-                    rows.push(Row::new(vec![
-                        "Device Voltage".to_string(),
-                        format!("{:.2}V", device_metrics.voltage),
-                    ]));
+                if let Some(v) = device_metrics.voltage {
+                    if v > 0.0 {
+                        rows.push(Row::new(vec![
+                            "Device Voltage".to_string(),
+                            format!("{:.2}V", v),
+                        ]));
+                    }
                 }
-                match device_metrics.battery_level {
-                    1..=100 => {
-                        rows.push(Row::new(vec![
-                            "Battery Level".to_string(),
-                            format!("{:.2}%", device_metrics.battery_level),
-                        ]));
+                if let Some(bl) = device_metrics.battery_level {
+                    match bl {
+                        1..=100 => {
+                            rows.push(Row::new(vec![
+                                "Battery Level".to_string(),
+                                format!("{:.2}%", bl),
+                            ]));
+                        }
+                        101 => {
+                            rows.push(Row::new(vec![
+                                "Battery Level".to_string(),
+                                format!("Plugged-in"),
+                            ]));
+                        }
+                        _ => {}
                     }
-                    101 => {
-                        rows.push(Row::new(vec![
-                            "Battery Level".to_string(),
-                            format!("Plugged-in"),
-                        ]));
-                    }
-                    _ => {}
                 }
             }
             //endregion
@@ -300,25 +309,25 @@ impl NodesTab {
 
             //region Position-struct display fields
             if let Some(position) = cn.node_info.position {
-                if position.latitude_i != 0 {
+                if position.latitude_i() != 0 {
                     rows.push(Row::new(vec![
                         "Latitude".to_string(),
-                        format!("{:.2}", position.latitude_i as f32 * (GPS_PRECISION_FACTOR)),
+                        format!("{:.2}", position.latitude_i() as f32 * (GPS_PRECISION_FACTOR)),
                     ]));
                 }
-                if position.longitude_i != 0 {
+                if position.longitude_i() != 0 {
                     rows.push(Row::new(vec![
                         "Longitude".to_string(),
                         format!(
                             "{:.2}",
-                            position.longitude_i as f32 * (GPS_PRECISION_FACTOR)
+                            position.longitude_i() as f32 * (GPS_PRECISION_FACTOR)
                         ),
                     ]));
                 }
-                if position.altitude > 0 {
+                if position.altitude() > 0 {
                     rows.push(Row::new(vec![
                         "Altitude".to_string(),
-                        format!("{}m", position.altitude),
+                        format!("{}m", position.altitude()),
                     ]));
                 }
             }
@@ -412,7 +421,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.device.battery_level as f64))
+                    .map(|d| (d.timestamp as f64, d.device.battery_level() as f64))
                     .collect();
             }
             Voltage => {
@@ -421,7 +430,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.device.voltage as f64))
+                    .map(|d| (d.timestamp as f64, d.device.voltage() as f64))
                     .collect();
             }
             AirUtilization => {
@@ -430,7 +439,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.device.air_util_tx as f64))
+                    .map(|d| (d.timestamp as f64, d.device.air_util_tx() as f64))
                     .collect();
             }
             ChannelUtilization => {
@@ -439,7 +448,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.device.channel_utilization as f64))
+                    .map(|d| (d.timestamp as f64, d.device.channel_utilization() as f64))
                     .collect()
             }
             RSSI => {
@@ -466,7 +475,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.environment.temperature as f64))
+                    .map(|d| (d.timestamp as f64, d.environment.temperature() as f64))
                     .collect()
             }
             RelativeHumidity => {
@@ -475,7 +484,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.environment.relative_humidity as f64))
+                    .map(|d| (d.timestamp as f64, d.environment.relative_humidity() as f64))
                     .collect()
             }
             BarometricPressure => {
@@ -484,7 +493,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.environment.barometric_pressure as f64))
+                    .map(|d| (d.timestamp as f64, d.environment.barometric_pressure() as f64))
                     .collect()
             }
             GasResistance => {
@@ -493,7 +502,7 @@ impl NodesTab {
                 data = cn
                     .timeseries
                     .iter()
-                    .map(|d| (d.timestamp as f64, d.environment.gas_resistance as f64))
+                    .map(|d| (d.timestamp as f64, d.environment.gas_resistance() as f64))
                     .collect()
             }
         };
@@ -581,6 +590,12 @@ impl NodesTab {
                 delayed: 0,
                 via_mqtt: true,
                 hop_start: 0,
+                public_key: vec![],
+                pki_encrypted: false,
+                next_hop: 0,
+                relay_node: 0,
+                tx_after: 0,
+                transport_mechanism: 0,
                 payload_variant: Some(protobufs::mesh_packet::PayloadVariant::Decoded(Data {
                     portnum: i32::from(TracerouteApp),
                     payload: vec![],
@@ -590,6 +605,7 @@ impl NodesTab {
                     request_id: 0,
                     reply_id: 0,
                     emoji: 0,
+                    bitfield: None,
                 })),
             };
             let payload_variant = Some(Packet(mesh_packet));
@@ -769,8 +785,8 @@ impl Widget for NodesTab {
                 let mut my_location: Option<Location> = None;
                 if let Some(my_node) = self.node_list.get(&self.my_node_id) {
                     if let Some(pos) = my_node.clone().node_info.position {
-                        let lat = pos.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
-                        let lon = pos.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                        let lat = pos.latitude_i() as f32 * consts::GPS_PRECISION_FACTOR;
+                        let lon = pos.longitude_i() as f32 * consts::GPS_PRECISION_FACTOR;
                         if lat.ne(&0.0) && lon.ne(&0.0) {
                             my_location = Some(Location::new(lat, lon));
                         }
@@ -795,9 +811,9 @@ impl Widget for NodesTab {
                         let device = cn.clone().node_info.device_metrics.unwrap_or_default();
                         let position = cn.clone().node_info.position.unwrap_or_default();
 
-                        let station_lat = position.latitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                        let station_lat = position.latitude_i() as f32 * consts::GPS_PRECISION_FACTOR;
                         let station_lon =
-                            position.longitude_i as f32 * consts::GPS_PRECISION_FACTOR;
+                            position.longitude_i() as f32 * consts::GPS_PRECISION_FACTOR;
                         let mut distance_str = "".to_string();
                         if my_location.is_some() {
                             let station_location = Location::new(station_lat, station_lon);
@@ -810,7 +826,7 @@ impl Widget for NodesTab {
 
                         let hops: String = match cn.node_info.via_mqtt {
                             true => "MQTT".to_string(),
-                            false => cn.node_info.hops_away.to_string(),
+                            false => cn.node_info.hops_away().to_string(),
                         };
 
                         let now_secs = get_secs();
@@ -838,26 +854,26 @@ impl Widget for NodesTab {
                         }
 
                         let mut altitude_str = "".to_string();
-                        if position.altitude.ne(&0) {
-                            altitude_str = format!("{}m", position.altitude);
+                        if position.altitude().ne(&0) {
+                            altitude_str = format!("{}m", position.altitude());
                         };
 
                         let mut voltage_str = "".to_string();
-                        if device.voltage > 0.0 {
-                            voltage_str = format!("{:.2}V", device.voltage);
+                        if device.voltage() > 0.0 {
+                            voltage_str = format!("{:.2}V", device.voltage());
                         };
 
                         let mut battery_str = "".to_string();
-                        match device.battery_level {
+                        match device.battery_level() {
                             1..=100 => {
-                                battery_str = format!("{:.2}%", device.battery_level);
+                                battery_str = format!("{:.2}%", device.battery_level());
                             }
                             101 => {
                                 battery_str = "Powered".to_string();
                             }
                             _ => {}
                         }
-                        if device.battery_level.gt(&0) && device.battery_level.le(&100) {};
+                        if device.battery_level().gt(&0) && device.battery_level().le(&100) {};
 
                         let mut rf_str = "".to_string();
                         if !cn.node_info.via_mqtt {

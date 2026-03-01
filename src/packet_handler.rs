@@ -384,6 +384,9 @@ pub async fn process_packet(
                                 PayloadVariant::Display(d) => devcfg.display = d,
                                 PayloadVariant::Lora(l) => devcfg.lora = l,
                                 PayloadVariant::Bluetooth(b) => devcfg.bluetooth = b,
+                                PayloadVariant::Security(s) => devcfg.security = s,
+                                PayloadVariant::Sessionkey(sk) => devcfg.session_key = sk,
+                                PayloadVariant::DeviceUi(d) => devcfg.device_ui = d,
                             }
                             devcfg.last_update = get_secs();
                             *f = Some(devcfg);
@@ -495,6 +498,20 @@ pub async fn process_packet(
                     return None;
                 }
                 from_radio::PayloadVariant::MqttClientProxyMessage(v) => {
+                    info!("{:#?}", v);
+                    return None;
+                },
+                meshtastic::protobufs::from_radio::PayloadVariant::FileInfo(v) => {
+                    info!("File: {}", v.file_name);
+                    return None;
+                }
+
+                meshtastic::protobufs::from_radio::PayloadVariant::ClientNotification(v) => {
+                    info!("{:#?}", v);
+                    return None;
+                }
+
+                meshtastic::protobufs::from_radio::PayloadVariant::DeviceuiConfig(v) => {
                     info!("{:#?}", v);
                     return None;
                 }

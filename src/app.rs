@@ -13,7 +13,7 @@ use crossterm::event::KeyCode;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use itertools::Itertools;
 use meshtastic::packet::PacketDestination;
-use meshtastic::protobufs::Channel;
+use meshtastic::protobufs::{Channel, DeviceUiConfig};
 use meshtastic::types::MeshChannel;
 use ratatui::widgets::{Clear, Paragraph};
 use ratatui::{
@@ -598,12 +598,15 @@ pub(crate) fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
 pub struct DeviceConfiguration {
     pub device: DeviceConfig,
     pub bluetooth: BluetoothConfig,
+    pub device_ui: DeviceUiConfig,
     pub display: DisplayConfig,
     pub lora: LoRaConfig,
     pub network: NetworkConfig,
     pub position: PositionConfig,
     pub power: PowerConfig,
     pub mqtt: MqttConfig,
+    pub security: SecurityConfig,
+    pub session_key: SessionkeyConfig,
     pub serial: SerialConfig,
     pub external_notification: ExternalNotificationConfig,
     pub store_forward: StoreForwardConfig,
