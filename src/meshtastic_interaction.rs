@@ -75,7 +75,7 @@ pub(crate) async fn meshtastic_loop(
             (decoded_listener, connected_stream_api) = stream_api.connect(tcp_stream).await;
         }
         Connection::Serial(device) => {
-            let serial_stream = utils::stream::build_serial_stream(device, None, None, None)
+            let serial_stream = utils::stream::build_serial_stream(device, None, Some(true),Some(true))
                 .expect("Unable to open serial port.");
             (decoded_listener, connected_stream_api) = stream_api.connect(serial_stream).await;
         }
